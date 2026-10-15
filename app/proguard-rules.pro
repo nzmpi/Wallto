@@ -1,0 +1,14 @@
+-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
+-keep class org.web3j.protocol.** { *; }
+-keep class org.web3j.crypto.** { *; }
+-keep class org.web3j.abi.** { *; }
+-keep class com.fasterxml.jackson.** { *; }
+-keep class org.bouncycastle.** { *; }
+-keep class * extends org.web3j.abi.TypeReference { *; }
+-keep class org.web3j.abi.TypeReference { *; }
+-dontwarn org.web3j.**
+-dontwarn org.bouncycastle.**
+-dontwarn com.fasterxml.jackson.databind.**
+-dontwarn org.slf4j.**
+-dontwarn javax.naming.**
+-dontwarn java.lang.management.**
