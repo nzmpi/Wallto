@@ -23,7 +23,7 @@ object KeystoreVault {
         (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
         return try {
             generate(strongBox = true)
-        } catch (e: StrongBoxUnavailableException) {
+        } catch (_: StrongBoxUnavailableException) {
             generate(strongBox = false)
         }
     }
@@ -45,7 +45,7 @@ object KeystoreVault {
 
     private fun existingKey(): SecretKey {
         val ks = KeyStore.getInstance(PROVIDER).apply { load(null) }
-        val key = try { ks.getKey(ALIAS, null) } catch (e: UnrecoverableKeyException) { null }
+        val key = try { ks.getKey(ALIAS, null) } catch (_: UnrecoverableKeyException) { null }
         return key as? SecretKey ?: throw KeyLostException()
     }
 

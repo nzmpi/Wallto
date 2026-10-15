@@ -3,6 +3,10 @@
     <words>
       <w>GWEI</w>
       <w>Sepolia</w>
+      <w>addr</w>
+      <w>checksummed</w>
+      <w>creds</w>
+      <w>secp</w>
     </words>
   </dictionary>
 </component>
