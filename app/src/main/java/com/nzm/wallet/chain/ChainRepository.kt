@@ -1,12 +1,12 @@
 package com.nzm.wallet.chain
 
 import android.content.Context
-import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 import androidx.core.net.toUri
 
 class ChainRepository(context: Context) {
-    private val dao = AppDatabase.get(context).chainDao()
+    private val db = AppDatabase.get(context)
+    private val dao = db.chainDao()
     val chains: Flow<List<Chain>> = dao.observeAll()
 
     suspend fun seedDefaults() {
@@ -21,7 +21,10 @@ class ChainRepository(context: Context) {
         )
     }
 
-    suspend fun remove(chainId: Long) = dao.delete(chainId)
+    suspend fun remove(chainId: Long) {
+        dao.delete(chainId)
+        db.tokenDao().deleteAllFor(chainId)
+    }
 
     /** existing == null: add new chain. existing != null: edit it. Chain ID never changes on edit. */
     suspend fun saveChain(

@@ -18,16 +18,20 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
+import com.nzm.wallet.chain.Erc20
+import com.nzm.wallet.chain.Token
+import com.nzm.wallet.chain.TokenRepository
 import com.nzm.wallet.storage.Vault
 
 @Composable
 fun ChainSection(
     address: String,
     repo: ChainRepository,
+    tokenRepo: TokenRepository,
     prefs: SharedPreferences,
     activity: FragmentActivity,
     vault: Vault
-){
+) {
     val scope = rememberCoroutineScope()
     val chains by repo.chains.collectAsState(initial = emptyList())
     var selectedId by remember { mutableLongStateOf(prefs.getLong("chain_id", 11155111L)) }
@@ -38,6 +42,11 @@ fun ChainSection(
     var showAdd by remember { mutableStateOf(false) }
     var showEdit by remember { mutableStateOf(false) }
     var showSend by remember { mutableStateOf(false) }
+    val tokens by remember(selected?.chainId) { tokenRepo.observe(selected?.chainId ?: -1L) }
+        .collectAsState(initial = emptyList())
+    var tokenBalances by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var sendToken by remember { mutableStateOf<Token?>(null) }
+    var showAddToken by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { repo.seedDefaults() }
 
@@ -50,6 +59,21 @@ fun ChainSection(
             throw e
         } catch (e: Exception) {
             "error: ${e.message}"
+        }
+    }
+
+    LaunchedEffect(address, selected?.chainId, selected?.rpcUrl, tokens, tick) {
+        val c = selected ?: return@LaunchedEffect
+        tokenBalances = emptyMap()
+        for ((_, tokenAddress, _, _, decimals) in tokens) {
+            val text = try {
+                Rpc.formatUnits(Erc20.balanceOf(c.rpcUrl, tokenAddress, address), decimals)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                "error"
+            }
+            tokenBalances = tokenBalances + (tokenAddress to text)
         }
     }
 
@@ -73,7 +97,17 @@ fun ChainSection(
                 }
             }
             Text("Balance: $balance")
-            Button(onClick = { showSend = true }) { Text("Send") }
+            Button(onClick = { sendToken = null; showSend = true }) { Text("Send") }
+
+            tokens.forEach { t ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${t.symbol}: ${tokenBalances[t.address] ?: "..."}", Modifier.weight(1f))
+                    TextButton(onClick = { sendToken = t; showSend = true }) { Text("Send") }
+                    TextButton(onClick = { scope.launch { tokenRepo.remove(t.chainId, t.address) } }) { Text("Remove") }
+                }
+            }
+            OutlinedButton(onClick = { showAddToken = true }) { Text("Add token") }
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { tick++ }) { Text("Refresh") }
                 OutlinedButton(onClick = { showEdit = true }) { Text("Edit chain") }
@@ -101,10 +135,13 @@ fun ChainSection(
     }
 
     if (showSend && selected != null) {
-        SendDialog(activity, vault, selected, address) { sent ->
+        SendDialog(activity, vault, selected, address, sendToken) { sent ->
             showSend = false
             if (sent) tick++
         }
+    }
+    if (showAddToken && selected != null) {
+        TokenDialog(selected, tokenRepo) { showAddToken = false }
     }
 }
 

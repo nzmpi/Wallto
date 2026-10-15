@@ -28,6 +28,7 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.nzm.wallet.chain.ChainRepository
+import com.nzm.wallet.chain.TokenRepository
 import com.nzm.wallet.storage.KeystoreVault
 import com.nzm.wallet.ui.ChainSection
 import kotlinx.coroutines.CancellationException
@@ -73,6 +74,7 @@ fun WalletTestScreen(activity: FragmentActivity, vault: Vault) {
     val scope = rememberCoroutineScope()
     val appCtx = activity.applicationContext
     val repo = remember { ChainRepository(appCtx) }
+    val tokenRepo = remember { TokenRepository(appCtx) }
     val prefs = remember { appCtx.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE) }
 
     var hasWallet by remember { mutableStateOf(vault.exists()) }
@@ -170,7 +172,7 @@ fun WalletTestScreen(activity: FragmentActivity, vault: Vault) {
                 cm.setPrimaryClip(ClipData.newPlainText("address", address))
                 status = "Address copied"
             }) { Text("Copy address") }
-            ChainSection(address, repo, prefs, activity, vault)
+            ChainSection(address, repo, tokenRepo, prefs, activity, vault)
         }
 
         backup?.let {

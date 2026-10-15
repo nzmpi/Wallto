@@ -31,7 +31,11 @@ data class TxPlan(
     val value: BigInteger,
     val nonce: BigInteger,
     val gasLimit: BigInteger,
-    val fee: Fee
+    val fee: Fee,
+    val data: String = "",
+    val recipient: String? = null,
+    val token: Token? = null,
+    val tokenAmount: BigInteger? = null
 ) {
     val maxFeeWei: BigInteger
         get() = gasLimit * when (fee) {
@@ -48,8 +52,7 @@ object SendTx {
         val s = input.trim()
         if (!Regex("^0x[0-9a-fA-F]{40}$").matches(s)) return false
         val body = s.substring(2)
-        if (body == body.lowercase() || body == body.uppercase()) return true // no checksum info
-        return Keys.toChecksumAddress(s) == s
+        return body == body.lowercase() || body == body.uppercase() || Keys.toChecksumAddress(s) == s // no checksum info
     }
 
     fun parseAmount(text: String, decimals: Int): BigInteger {
@@ -58,7 +61,7 @@ object SendTx {
         require(d.signum() > 0) { "Amount must be above 0" }
         return try {
             d.movePointRight(decimals).toBigIntegerExact()
-        } catch (e: ArithmeticException) {
+        } catch (_: ArithmeticException) {
             throw IllegalArgumentException("Too many decimals (max $decimals)")
         }
     }
@@ -68,44 +71,47 @@ object SendTx {
         return this
     }
 
-    suspend fun plan(chain: Chain, from: String, to: String, value: BigInteger): TxPlan =
-        withContext(Dispatchers.IO) {
-            val web3 = Web3j.build(HttpService(chain.rpcUrl))
-            try {
-                val nonce = web3.ethGetTransactionCount(from, DefaultBlockParameterName.PENDING)
-                    .send().ok().transactionCount
+    suspend fun plan(
+        chain: Chain, from: String, to: String, value: BigInteger,
+        data: String = "", recipient: String? = null,
+        token: Token? = null, tokenAmount: BigInteger? = null
+    ): TxPlan = withContext(Dispatchers.IO) {
+        val web3 = Web3j.build(HttpService(chain.rpcUrl))
+        try {
+            val nonce = web3.ethGetTransactionCount(from, DefaultBlockParameterName.PENDING)
+                .send().ok().transactionCount
+            val callTx =
+                if (data.isEmpty()) Transaction.createEtherTransaction(from, null, null, null, to, value)
+                else Transaction.createFunctionCallTransaction(from, null, null, null, to, value, data)
+            val est = web3.ethEstimateGas(callTx).send().ok().amountUsed
+            val gasLimit =
+                if (est == BigInteger.valueOf(21000)) est
+                else est * BigInteger.valueOf(12) / BigInteger.TEN // 20% headroom for contract recipients
 
-                val est = web3.ethEstimateGas(
-                    Transaction.createEtherTransaction(from, null, null, null, to, value)
-                ).send().ok().amountUsed
-                val gasLimit =
-                    if (est == BigInteger.valueOf(21000)) est
-                    else est * BigInteger.valueOf(12) / BigInteger.TEN // 20% headroom for contract recipients
-
-                val block = web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false)
-                    .send().ok().block
-                val fee: Fee = if (block.baseFeePerGasRaw != null) {
-                    val tip = try {
-                        web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
-                    } catch (e: Exception) {
-                        GWEI
-                    }
-                    Fee.Eip1559(block.baseFeePerGas * BigInteger.valueOf(2) + tip, tip)
-                } else {
-                    Fee.Legacy(web3.ethGasPrice().send().ok().gasPrice)
+            val block = web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false)
+                .send().ok().block
+            val fee: Fee = if (block.baseFeePerGasRaw != null) {
+                val tip = try {
+                    web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
+                } catch (_: Exception) {
+                    GWEI
                 }
-
-                val plan = TxPlan(chain, from, to, value, nonce, gasLimit, fee)
-                val balance = web3.ethGetBalance(from, DefaultBlockParameterName.LATEST).send().ok().balance
-                require(balance >= plan.maxTotalWei) {
-                    "Insufficient funds. Need up to ${Rpc.formatUnits(plan.maxTotalWei, chain.decimals, 8)} " +
-                            "${chain.symbol}, have ${Rpc.formatUnits(balance, chain.decimals, 8)}"
-                }
-                plan
-            } finally {
-                web3.shutdown()
+                Fee.Eip1559(block.baseFeePerGas * BigInteger.valueOf(2) + tip, tip)
+            } else {
+                Fee.Legacy(web3.ethGasPrice().send().ok().gasPrice)
             }
+
+            val plan = TxPlan(chain, from, to, value, nonce, gasLimit, fee, data, recipient, token, tokenAmount)
+            val balance = web3.ethGetBalance(from, DefaultBlockParameterName.LATEST).send().ok().balance
+            require(balance >= plan.maxTotalWei) {
+                "Insufficient funds. Need up to ${Rpc.formatUnits(plan.maxTotalWei, chain.decimals, 8)} " +
+                        "${chain.symbol}, have ${Rpc.formatUnits(balance, chain.decimals, 8)}"
+            }
+            plan
+        } finally {
+            web3.shutdown()
         }
+    }
 
     /** Returns tx hash. Caller supplies short-lived credentials. */
     suspend fun signAndSend(plan: TxPlan, credentials: Credentials): String =
@@ -115,12 +121,12 @@ object SendTx {
             check(Rpc.chainId(c.rpcUrl) == c.chainId) { "RPC chain ID changed. Aborting." }
 
             val raw = when (val f = plan.fee) {
-                is Fee.Eip1559 -> RawTransaction.createEtherTransaction(
-                    c.chainId, plan.nonce, plan.gasLimit, plan.to, plan.value,
+                is Fee.Eip1559 -> RawTransaction.createTransaction(
+                    c.chainId, plan.nonce, plan.gasLimit, plan.to, plan.value, plan.data,
                     f.maxPriorityFeePerGas, f.maxFeePerGas
                 )
-                is Fee.Legacy -> RawTransaction.createEtherTransaction(
-                    plan.nonce, f.gasPrice, plan.gasLimit, plan.to, plan.value
+                is Fee.Legacy -> RawTransaction.createTransaction(
+                    plan.nonce, f.gasPrice, plan.gasLimit, plan.to, plan.value, plan.data
                 )
             }
             val signed = TransactionEncoder.signMessage(raw, c.chainId, credentials)
@@ -128,6 +134,11 @@ object SendTx {
 
             val decoded = TransactionDecoder.decode(hex) as SignedRawTransaction
             check(decoded.from.equals(credentials.address, ignoreCase = true)) { "Signature check failed" }
+            check(decoded.to.equals(plan.to, ignoreCase = true)) { "Target mismatch" }
+            check(decoded.value == plan.value) { "Value mismatch" }
+            check(
+                Numeric.cleanHexPrefix(decoded.data).equals(Numeric.cleanHexPrefix(plan.data), ignoreCase = true)
+            ) { "Data mismatch" }
 
             val web3 = Web3j.build(HttpService(c.rpcUrl))
             try {

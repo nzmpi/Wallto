@@ -4,6 +4,8 @@
 -keep class org.web3j.abi.** { *; }
 -keep class com.fasterxml.jackson.** { *; }
 -keep class org.bouncycastle.** { *; }
+-keep class * extends org.web3j.abi.TypeReference { *; }
+-keep class org.web3j.abi.TypeReference { *; }
 -dontwarn org.web3j.**
 -dontwarn org.bouncycastle.**
 -dontwarn com.fasterxml.jackson.databind.**
