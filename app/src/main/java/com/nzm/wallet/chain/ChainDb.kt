@@ -52,6 +52,9 @@ interface TokenDao {
     @Query("SELECT * FROM tokens WHERE chainId = :chainId ORDER BY symbol")
     fun observe(chainId: Long): Flow<List<Token>>
 
+    @Query("SELECT * FROM tokens WHERE chainId = :chainId AND address = :address")
+    suspend fun get(chainId: Long, address: String): Token?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(token: Token)
 

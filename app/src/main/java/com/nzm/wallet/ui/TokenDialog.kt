@@ -9,10 +9,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.chain.Erc20
+import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.chain.Token
 import com.nzm.wallet.chain.TokenRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import org.web3j.crypto.Keys
 
 @Composable
 fun TokenDialog(chain: Chain, repo: TokenRepository, onClose: () -> Unit) {
@@ -56,7 +58,12 @@ fun TokenDialog(chain: Chain, repo: TokenRepository, onClose: () -> Unit) {
                 scope.launch {
                     try {
                         if (f == null) {
-                            found = Erc20.fetchInfo(chain.rpcUrl, chain.chainId, address)
+                            val input = address.trim()
+                            require(SendTx.isValidAddress(input)) { "Invalid contract address or checksum" }
+                            repo.get(chain.chainId, Keys.toChecksumAddress(input))?.let {
+                                throw IllegalArgumentException("Already added: ${it.symbol} (${it.name})")
+                            }
+                            found = Erc20.fetchInfo(chain.rpcUrl, chain.chainId, input)
                         } else {
                             repo.add(f)
                             onClose()

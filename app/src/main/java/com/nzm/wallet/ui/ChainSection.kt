@@ -47,6 +47,7 @@ fun ChainSection(
     var tokenBalances by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var sendToken by remember { mutableStateOf<Token?>(null) }
     var showAddToken by remember { mutableStateOf(false) }
+    var tokenToRemove by remember { mutableStateOf<Token?>(null) }
 
     LaunchedEffect(Unit) { repo.seedDefaults() }
 
@@ -103,7 +104,7 @@ fun ChainSection(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${t.symbol}: ${tokenBalances[t.address] ?: "..."}", Modifier.weight(1f))
                     TextButton(onClick = { sendToken = t; showSend = true }) { Text("Send") }
-                    TextButton(onClick = { scope.launch { tokenRepo.remove(t.chainId, t.address) } }) { Text("Remove") }
+                    TextButton(onClick = { tokenToRemove = t }) { Text("Remove") }
                 }
             }
             OutlinedButton(onClick = { showAddToken = true }) { Text("Add token") }
@@ -142,6 +143,26 @@ fun ChainSection(
     }
     if (showAddToken && selected != null) {
         TokenDialog(selected, tokenRepo) { showAddToken = false }
+    }
+
+    tokenToRemove?.let { t ->
+        AlertDialog(
+            onDismissRequest = { tokenToRemove = null },
+            title = { Text("Remove ${t.symbol}?") },
+            text = {
+                Text(
+                    "Removes it from this list only. Your tokens stay in your wallet. " +
+                            "Add it again with the contract address:\n${t.address}"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { tokenRepo.remove(t.chainId, t.address) }
+                    tokenToRemove = null
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { tokenToRemove = null }) { Text("Cancel") } }
+        )
     }
 }
 
