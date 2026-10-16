@@ -49,6 +49,7 @@ fun ChainSection(
     var showAddToken by remember { mutableStateOf(false) }
     var tokenToRemove by remember { mutableStateOf<Token?>(null) }
     var showContract by remember { mutableStateOf(false) }
+    var confirmRemoveChain by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { repo.seedDefaults() }
 
@@ -119,7 +120,7 @@ fun ChainSection(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { showAdd = true }) { Text("Add chain") }
                 if (chains.size > 1) {
-                    OutlinedButton(onClick = { scope.launch { repo.remove(selected.chainId) } }) { Text("Remove chain") }
+                    OutlinedButton(onClick = { confirmRemoveChain = true }) { Text("Remove chain") }
                 }
             }
         }
@@ -171,6 +172,29 @@ fun ChainSection(
                 }) { Text("Remove") }
             },
             dismissButton = { TextButton(onClick = { tokenToRemove = null }) { Text("Cancel") } }
+        )
+    }
+
+    if (confirmRemoveChain && selected != null) {
+        AlertDialog(
+            onDismissRequest = { confirmRemoveChain = false },
+            title = { Text("Remove ${selected.name}?") },
+            text = {
+                Text(
+                    "Removes this chain and its token list from this device. " +
+                            "Your wallet and funds on the chain are not affected.\n\n" +
+                            "To add it back you need:\n" +
+                            "Chain ID: ${selected.chainId}\n" +
+                            "RPC: ${selected.rpcUrl}"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { repo.remove(selected.chainId) }
+                    confirmRemoveChain = false
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemoveChain = false }) { Text("Cancel") } }
         )
     }
 }
