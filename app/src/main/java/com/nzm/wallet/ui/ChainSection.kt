@@ -1,6 +1,7 @@
 package com.nzm.wallet.ui
 
 import android.content.SharedPreferences
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -45,6 +46,7 @@ fun ChainSection(
     val tokens by remember(selected?.chainId) { tokenRepo.observe(selected?.chainId ?: -1L) }
         .collectAsState(initial = emptyList())
     var tokenBalances by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var tokenInfo by remember { mutableStateOf<Token?>(null) }
     var sendToken by remember { mutableStateOf<Token?>(null) }
     var showAddToken by remember { mutableStateOf(false) }
     var tokenToRemove by remember { mutableStateOf<Token?>(null) }
@@ -104,7 +106,10 @@ fun ChainSection(
 
             tokens.forEach { t ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${t.symbol}: ${tokenBalances[t.address] ?: "..."}", Modifier.weight(1f))
+                    Text(
+                        "${t.symbol}: ${tokenBalances[t.address] ?: "..."}",
+                        Modifier.weight(1f).clickable { tokenInfo = t }
+                    )
                     TextButton(onClick = { sendToken = t; showSend = true }) { Text("Send") }
                     TextButton(onClick = { tokenToRemove = t }) { Text("Remove") }
                 }
@@ -152,6 +157,12 @@ fun ChainSection(
         ContractDialog(activity, vault, selected, address) { sent ->
             showContract = false
             if (sent) tick++
+        }
+    }
+
+    tokenInfo?.let { t ->
+        if (selected != null) {
+            TokenInfoDialog(activity, selected, t, address) { tokenInfo = null }
         }
     }
 
