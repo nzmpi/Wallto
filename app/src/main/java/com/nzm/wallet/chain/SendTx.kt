@@ -67,7 +67,7 @@ object SendTx {
     }
 
     private fun <T : Response<*>> T.ok(): T {
-        if (hasError()) throw IOException(error.message)
+        if (hasError()) throw IOException(ContractCall.describeError(error))
         return this
     }
 

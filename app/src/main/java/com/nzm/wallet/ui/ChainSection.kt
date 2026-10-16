@@ -48,6 +48,7 @@ fun ChainSection(
     var sendToken by remember { mutableStateOf<Token?>(null) }
     var showAddToken by remember { mutableStateOf(false) }
     var tokenToRemove by remember { mutableStateOf<Token?>(null) }
+    var showContract by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { repo.seedDefaults() }
 
@@ -109,6 +110,8 @@ fun ChainSection(
             }
             OutlinedButton(onClick = { showAddToken = true }) { Text("Add token") }
 
+            OutlinedButton(onClick = { showContract = true }) { Text("Contract call") }
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { tick++ }) { Text("Refresh") }
                 OutlinedButton(onClick = { showEdit = true }) { Text("Edit chain") }
@@ -143,6 +146,12 @@ fun ChainSection(
     }
     if (showAddToken && selected != null) {
         TokenDialog(selected, tokenRepo) { showAddToken = false }
+    }
+    if (showContract && selected != null) {
+        ContractDialog(activity, vault, selected, address) { sent ->
+            showContract = false
+            if (sent) tick++
+        }
     }
 
     tokenToRemove?.let { t ->

@@ -73,7 +73,7 @@ object Erc20 {
         return d
     }
 
-    private suspend fun isContract(rpcUrl: String, address: String): Boolean =
+    suspend fun isContract(rpcUrl: String, address: String): Boolean =
         withContext(Dispatchers.IO) {
             val web3 = Web3j.build(HttpService(rpcUrl))
             try {
