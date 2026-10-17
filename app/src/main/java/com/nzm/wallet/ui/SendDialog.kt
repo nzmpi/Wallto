@@ -24,7 +24,8 @@ fun SendDialog(
     vault: Vault,
     chain: Chain,
     from: String,
-    token: Token?, // null = native coin
+    tokens: List<Token>,
+    initialToken: Token?, // null = native coin
     onClose: (sent: Boolean) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -36,6 +37,8 @@ fun SendDialog(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    var token by remember { mutableStateOf(initialToken) }
+    var pickerOpen by remember { mutableStateOf(false) }
     val symbol = token?.symbol ?: chain.symbol
     val decimals = token?.decimals ?: chain.decimals
 
@@ -106,6 +109,24 @@ fun SendDialog(
                         Text("Check the full recipient address, not only first and last characters.")
                     }
                     else -> {
+                        Box {
+                            OutlinedButton(onClick = { pickerOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text(symbol, modifier = Modifier.weight(1f))
+                                Icon(Ic.ChevronDown, null, Modifier.size(16.dp))
+                            }
+                            DropdownMenu(expanded = pickerOpen, onDismissRequest = { pickerOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("${chain.symbol}  ${chain.name}") },
+                                    onClick = { token = null; pickerOpen = false; error = null }
+                                )
+                                tokens.forEach { t ->
+                                    DropdownMenuItem(
+                                        text = { Text("${t.symbol}  ${t.name}") },
+                                        onClick = { token = t; pickerOpen = false; error = null }
+                                    )
+                                }
+                            }
+                        }
                         OutlinedTextField(
                             to, { to = it }, label = { Text("Recipient address") },
                             modifier = Modifier.fillMaxWidth()
@@ -132,19 +153,20 @@ fun SendDialog(
                         require(SendTx.isValidAddress(dest)) { "Invalid recipient address or checksum" }
                         require(!dest.equals(ZERO_ADDRESS, ignoreCase = true)) { "Recipient is the zero address" }
                         val units = SendTx.parseAmount(amount, decimals)
-                        plan = if (token == null) {
+                        val tk = token
+                        plan = if (tk == null) {
                             SendTx.plan(chain, from, dest, units)
                         } else {
-                            require(!dest.equals(token.address, ignoreCase = true)) {
+                            require(!dest.equals(tk.address, ignoreCase = true)) {
                                 "Recipient is the token contract. Tokens would be lost."
                             }
-                            val bal = Erc20.balanceOf(chain.rpcUrl, token.address, from)
+                            val bal = Erc20.balanceOf(chain.rpcUrl, tk.address, from)
                             require(bal >= units) {
-                                "Insufficient ${token.symbol}. Have ${Rpc.formatUnits(bal, token.decimals, token.decimals)}"
+                                "Insufficient ${tk.symbol}. You have ${Rpc.formatUnits(bal, tk.decimals, tk.decimals)}"
                             }
                             SendTx.plan(
-                                chain, from, token.address, BigInteger.ZERO,
-                                Erc20.encodeTransfer(dest, units), dest, token, units
+                                chain, from, tk.address, BigInteger.ZERO,
+                                Erc20.encodeTransfer(dest, units), dest, tk, units
                             )
                         }
                     }
