@@ -1,0 +1,158 @@
+package com.nzm.wallet.ui
+
+import android.annotation.SuppressLint
+import android.app.Application
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.nzm.wallet.chain.Chain
+import com.nzm.wallet.chain.ChainRepository
+import com.nzm.wallet.chain.Erc20
+import com.nzm.wallet.chain.Rpc
+import com.nzm.wallet.chain.Token
+import com.nzm.wallet.chain.TokenRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import java.math.BigInteger
+import androidx.core.content.edit
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class WalletViewModel(app: Application) : AndroidViewModel(app) {
+    @SuppressLint("StaticFieldLeak")
+    private val ctx = app.applicationContext
+    private val prefs = ctx.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
+    val chainRepo = ChainRepository(ctx)
+    val tokenRepo = TokenRepository(ctx)
+
+    /** Set after unlock, null while locked. */
+    var address by mutableStateOf<String?>(null)
+
+    var chains by mutableStateOf<List<Chain>>(emptyList())
+        private set
+    var tokens by mutableStateOf<List<Token>>(emptyList())
+        private set
+
+    private var selectedId by mutableLongStateOf(prefs.getLong("chain_id", 11155111L))
+    val selected: Chain?
+        get() = chains.firstOrNull { it.chainId == selectedId } ?: chains.firstOrNull()
+
+    var nativeBalance by mutableStateOf<BigInteger?>(null)
+        private set
+
+    /** Key present with null value = lookup failed. Key absent = still loading. */
+    var tokenBalances by mutableStateOf<Map<String, BigInteger?>>(emptyMap())
+        private set
+    var loading by mutableStateOf(false)
+        private set
+    var balanceError by mutableStateOf<String?>(null)
+        private set
+    var lockAfterMs by mutableLongStateOf(prefs.getLong("lock_after_ms", 60_000L))
+        private set
+
+    private var refreshJob: Job? = null
+    private var refreshSeq = 0
+    private var shownChainId: Long? = null
+
+    init {
+        viewModelScope.launch { chainRepo.seedDefaults() }
+        viewModelScope.launch { chainRepo.chains.collect { chains = it } }
+        viewModelScope.launch {
+            snapshotFlow { selected?.chainId }
+                .distinctUntilChanged()
+                .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else tokenRepo.observe(id) }
+                .collect { tokens = it }
+        }
+    }
+
+    fun selectChain(id: Long) {
+        if (id == selected?.chainId) return
+        selectedId = id
+        prefs.edit { putLong("chain_id", id) }
+        resetBalances()
+    }
+
+    fun setLockAfter(ms: Long) {
+        lockAfterMs = ms
+        prefs.edit { putLong("lock_after_ms", ms) }
+    }
+
+    fun clearSession() {
+        address = null
+        refreshJob?.cancel()
+        loading = false
+        resetBalances()
+    }
+
+    private fun resetBalances() {
+        nativeBalance = null
+        tokenBalances = emptyMap()
+        balanceError = null
+        shownChainId = selected?.chainId
+    }
+
+    fun refresh() {
+        val chain = selected ?: return
+        val owner = address ?: return
+        if (shownChainId != chain.chainId) resetBalances()
+        val toks = tokens
+        val turn = ++refreshSeq
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            loading = true
+            balanceError = null
+            try {
+                coroutineScope {
+                    val native = async {
+                        try {
+                            Result.success(Rpc.balance(chain.rpcUrl, owner))
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Result.failure(e)
+                        }
+                    }
+                    val perToken = toks.map { t ->
+                        async {
+                            t.address to try {
+                                Erc20.balanceOf(chain.rpcUrl, t.address, owner)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
+                    }
+                    native.await().fold(
+                        onSuccess = { nativeBalance = it },
+                        onFailure = {
+                            nativeBalance = null
+                            balanceError = it.message ?: "RPC not reachable"
+                        }
+                    )
+                    tokenBalances = perToken.awaitAll().toMap()
+                }
+            } finally {
+                if (turn == refreshSeq) loading = false
+            }
+        }
+    }
+
+    fun amountText(raw: BigInteger?, decimals: Int): String =
+        raw?.let { Rpc.formatUnits(it, decimals, 6) } ?: "—"
+
+    /** Dollar text for a row. Filled in by the prices step. */
+    fun fiat(token: Token?, raw: BigInteger?): String? = null
+}

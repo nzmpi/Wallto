@@ -26,6 +26,7 @@ fun TokenInfoDialog(
     chain: Chain,
     token: Token,
     owner: String,
+    onSend: (() -> Unit)? = null,
     onClose: () -> Unit
 ) {
     var raw by remember { mutableStateOf<BigInteger?>(null) }
@@ -66,6 +67,9 @@ fun TokenInfoDialog(
             }
         },
         confirmButton = {
+            if (onSend != null) {
+                TextButton(onClick = onSend) { Text("Send") }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = {
                     activity.getSystemService(ClipboardManager::class.java)
