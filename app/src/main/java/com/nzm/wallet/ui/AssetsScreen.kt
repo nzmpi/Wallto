@@ -77,7 +77,7 @@ fun AssetsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Assets", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                RefreshButton(vm.loading) { vm.refresh() }
+                RefreshButton(vm.loading) { vm.refresh(force = true) }
                 TextButton(onClick = { addToken = true }) {
                     Text("Add token", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Accent)
                 }

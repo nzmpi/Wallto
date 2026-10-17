@@ -28,6 +28,11 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.math.BigInteger
 import androidx.core.content.edit
+import com.nzm.wallet.prices.PriceRepository
+import com.nzm.wallet.prices.PriceSnapshot
+import java.math.BigDecimal
+import java.text.NumberFormat
+import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalletViewModel(app: Application) : AndroidViewModel(app) {
@@ -66,6 +71,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private var refreshSeq = 0
     private var shownChainId: Long? = null
 
+    private val priceRepo = PriceRepository(ctx)
+    private var priceKey: String? = priceRepo.keyStore.get()
+    var priceKeySet by mutableStateOf(priceKey != null)
+        private set
+    var priceError by mutableStateOf<String?>(null)
+        private set
+    private var snapshots by mutableStateOf<Map<Long, PriceSnapshot>>(emptyMap())
+    private var priceJob: Job? = null
+    private val usd = NumberFormat.getCurrencyInstance(Locale.US)
+
     init {
         viewModelScope.launch { chainRepo.seedDefaults() }
         viewModelScope.launch { chainRepo.chains.collect { chains = it } }
@@ -103,11 +118,13 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         shownChainId = selected?.chainId
     }
 
-    fun refresh() {
+    fun refresh(force: Boolean = false) {
         val chain = selected ?: return
         val owner = address ?: return
         if (shownChainId != chain.chainId) resetBalances()
+        loadSnapshot(chain.chainId)
         val toks = tokens
+        refreshPrices(chain, toks, force)
         val turn = ++refreshSeq
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
@@ -153,6 +170,58 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     fun amountText(raw: BigInteger?, decimals: Int): String =
         raw?.let { Rpc.formatUnits(it, decimals, 6) } ?: "—"
 
-    /** Dollar text for a row. Filled in by the prices step. */
-    fun fiat(token: Token?, raw: BigInteger?): String? = null
+    private fun loadSnapshot(chainId: Long) {
+        if (!snapshots.containsKey(chainId)) snapshots = snapshots + (chainId to priceRepo.snapshot(chainId))
+    }
+
+    /** Auto: once per day per chain. Forced: refresh button. Testnets and no key: no calls. */
+    private fun refreshPrices(chain: Chain, toks: List<Token>, force: Boolean) {
+        val key = priceKey ?: return
+        if (chain.isTestnet) return
+        if (!force) {
+            if (priceJob?.isActive == true) return
+            if ((snapshots[chain.chainId] ?: PriceSnapshot.EMPTY).isFromToday()) return
+        }
+        priceJob?.cancel()
+        priceJob = viewModelScope.launch {
+            try {
+                val s = priceRepo.fetch(key, chain, toks)
+                snapshots = snapshots + (chain.chainId to s)
+                priceError = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                priceError = e.message ?: "Price request failed"
+            }
+        }
+    }
+
+    fun setPriceKey(key: String?) {
+        val k = key?.trim()?.takeIf { it.isNotEmpty() }
+        priceRepo.keyStore.set(k)
+        priceKey = k
+        priceKeySet = k != null
+        priceError = null
+        if (k == null) {
+            priceJob?.cancel()
+            priceRepo.clearSnapshots()
+            snapshots = emptyMap()
+        } else {
+            refresh(force = true)
+        }
+    }
+
+    fun fiat(token: Token?, raw: BigInteger?): String? {
+        val chain = selected ?: return null
+        if (raw == null) return null
+        val snap = snapshots[chain.chainId] ?: return null
+        val price = (if (token == null) snap.native else snap.tokens[token.address.lowercase()]) ?: return null
+        val decimals = token?.decimals ?: chain.decimals
+        val value = BigDecimal(raw).movePointLeft(decimals) * BigDecimal.valueOf(price)
+        return when {
+            value.signum() == 0 -> $$"$0.00"
+            value < BigDecimal("0.01") -> $$"<$0.01"
+            else -> usd.format(value)
+        }
+    }
 }
