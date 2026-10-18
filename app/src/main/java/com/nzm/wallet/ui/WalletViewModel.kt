@@ -30,12 +30,25 @@ import java.math.BigInteger
 import androidx.core.content.edit
 import com.nzm.wallet.prices.PriceRepository
 import com.nzm.wallet.prices.PriceSnapshot
+import com.nzm.wallet.wc.WcService
+import kotlinx.coroutines.Dispatchers
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalletViewModel(app: Application) : AndroidViewModel(app) {
+    init {
+        WcService.start(app)
+        WcService.provider = object : WcService.Provider {
+            override fun chains() = chains.toList()
+            override fun address() = address
+            override fun switchTo(chain: Chain) {
+                viewModelScope.launch(Dispatchers.Main) { selectChain(chain.chainId) }
+            }
+        }
+    }
+
     @SuppressLint("StaticFieldLeak")
     private val ctx = app.applicationContext
     private val prefs = ctx.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)

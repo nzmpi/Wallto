@@ -98,4 +98,11 @@ object Ic {
         lineTo(21f, 8f)
         moveTo(21f, 3f); verticalLineToRelative(5f); horizontalLineToRelative(-5f)
     }
+    val Scan = icon("scan") {
+        moveTo(4f, 9f); verticalLineTo(5f); horizontalLineTo(8f)
+        moveTo(16f, 5f); horizontalLineTo(20f); verticalLineTo(9f)
+        moveTo(20f, 15f); verticalLineTo(19f); horizontalLineTo(16f)
+        moveTo(8f, 19f); horizontalLineTo(4f); verticalLineTo(15f)
+        moveTo(8f, 12f); horizontalLineTo(16f)
+    }
 }

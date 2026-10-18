@@ -79,6 +79,11 @@ dependencies {
     implementation(libs.androidx.biometric)
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+    // BOM version: latest on https://github.com/reown-com/reown-kotlin/releases
+    implementation(platform(libs.reown.android.bom))
+    implementation(libs.reown.android.core)
+    implementation(libs.reown.walletkit)
+    implementation(libs.play.services.code.scanner)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
