@@ -17,9 +17,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.chain.Chain
+import com.nzm.wallet.chain.Contact
+import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.chain.Token
 import com.nzm.wallet.ui.theme.Dim
 import kotlinx.coroutines.launch
+import org.web3j.crypto.Keys
 
 private val LOCK_OPTIONS = listOf(
     30_000L to "30 seconds",
@@ -46,6 +49,7 @@ fun SettingsScreen(
             SettingsPage.Root -> SettingsRoot(vm, onPage, onReveal, onWipe)
             SettingsPage.Chains -> ChainsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Tokens -> TokensPage(activity, vm, address) { onPage(SettingsPage.Root) }
+            SettingsPage.Contacts -> ContactsPage(vm) { onPage(SettingsPage.Root) }
         }
     }
 }
@@ -71,6 +75,11 @@ private fun SettingsRoot(
         Spacer(Modifier.height(6.dp))
         SettingsRow("Chains", "${vm.chains.size}") { onPage(SettingsPage.Chains) }
         SettingsRow("Tokens", chain?.let { "${vm.tokens.size} on ${it.name}" }) { onPage(SettingsPage.Tokens) }
+        Hairline()
+        Spacer(Modifier.height(28.dp))
+        SectionLabel("Address book")
+        Spacer(Modifier.height(6.dp))
+        SettingsRow("Contacts", "${vm.contacts.size}") { onPage(SettingsPage.Contacts) }
         Hairline()
         Spacer(Modifier.height(28.dp))
         SectionLabel("Security")
@@ -270,5 +279,98 @@ private fun PriceKeyDialog(vm: WalletViewModel, onClose: () -> Unit) {
                 TextButton(onClick = onClose) { Text("Cancel") }
             }
         }
+    )
+}
+
+@Composable
+private fun ContactsPage(vm: WalletViewModel, onBack: () -> Unit) {
+    var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Contact?>(null) }
+    var removing by remember { mutableStateOf<Contact?>(null) }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp).padding(top = 12.dp)
+    ) {
+        PageHeader("Contacts", onBack)
+        Spacer(Modifier.height(20.dp))
+        if (vm.contacts.isEmpty()) {
+            Text("No contacts yet. Save one from the Send screen, or add one here.", fontSize = 15.sp, color = Dim.Mid)
+            Spacer(Modifier.height(16.dp))
+        }
+        vm.contacts.forEach { c ->
+            Hairline()
+            Row(
+                Modifier.fillMaxWidth().height(68.dp).clickable { editing = c },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(c.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        shortAddress(c.address) + (c.ens?.let { " · $it" } ?: ""),
+                        fontSize = 13.sp, color = Dim.Mid
+                    )
+                }
+                IconButton(onClick = { removing = c }) {
+                    Icon(Ic.Trash, "Remove ${c.name}", Modifier.size(22.dp), tint = Dim.Mid)
+                }
+            }
+        }
+        Hairline()
+        Spacer(Modifier.height(24.dp))
+        OutlineButton("Add contact", onClick = { adding = true }, icon = Ic.Plus)
+        Spacer(Modifier.height(24.dp))
+    }
+
+    if (adding) ContactEditDialog(vm, null) { adding = false }
+    editing?.let { c -> ContactEditDialog(vm, c) { editing = null } }
+    removing?.let { c ->
+        ConfirmDialog(
+            title = "Remove ${c.name}?",
+            text = "Only the saved name is removed.\n\n${c.address}",
+            confirmLabel = "Remove",
+            onConfirm = { vm.deleteContact(c.address); removing = null },
+            onDismiss = { removing = null }
+        )
+    }
+}
+
+@Composable
+private fun ContactEditDialog(vm: WalletViewModel, existing: Contact?, onClose: () -> Unit) {
+    var name by remember { mutableStateOf(existing?.name ?: "") }
+    var address by remember { mutableStateOf(existing?.address ?: "") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(if (existing == null) "Add contact" else "Edit contact") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    name, { name = it.take(32) }, label = { Text("Name") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    address, { address = it.trim() }, label = { Text("Address") },
+                    enabled = existing == null, modifier = Modifier.fillMaxWidth()
+                )
+                error?.let { Text(it, color = Dim.Danger) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                when {
+                    name.isBlank() -> error = "Enter a name"
+                    !SendTx.isValidAddress(address) -> error = "Invalid address or checksum"
+                    else -> {
+                        vm.saveContact(
+                            Contact(Keys.toChecksumAddress(address), name.trim(), existing?.ens)
+                        )
+                        onClose()
+                    }
+                }
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
     )
 }

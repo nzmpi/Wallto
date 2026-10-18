@@ -105,4 +105,23 @@ object Ic {
         moveTo(8f, 19f); horizontalLineTo(4f); verticalLineTo(15f)
         moveTo(8f, 12f); horizontalLineTo(16f)
     }
+    val Close = icon("close") {
+        moveTo(6f, 6f); lineTo(18f, 18f)
+        moveTo(18f, 6f); lineTo(6f, 18f)
+    }
+    val Paste = icon("paste") {
+        moveTo(6f, 6f); horizontalLineTo(18f); verticalLineTo(20f); horizontalLineTo(6f); close()
+        moveTo(9f, 4f); horizontalLineTo(15f); verticalLineTo(7f); horizontalLineTo(9f); close()
+    }
+    val UserPlus = icon("userPlus") {
+        circle(10f, 8f, 3.5f)
+        moveTo(4f, 19f); arcTo(6f, 6f, 0f,
+        isMoreThanHalf = false,
+        isPositiveArc = true,
+        x1 = 16f,
+        y1 = 19f
+    )
+        moveTo(19f, 7f); lineTo(19f, 13f)
+        moveTo(16f, 10f); lineTo(22f, 10f)
+    }
 }

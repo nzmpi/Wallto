@@ -123,7 +123,7 @@ fun AssetsScreen(
     }
 
     if (sendOpen) {
-        SendDialog(activity, vault, chain, address, shownTokens, sendToken, ensRpc = vm.ensRpc) { sent ->
+        SendScreen(activity, vault, vm, address, sendToken) { sent ->
             sendOpen = false
             if (sent) vm.refresh()
         }

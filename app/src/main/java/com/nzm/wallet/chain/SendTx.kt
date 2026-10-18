@@ -166,4 +166,49 @@ object SendTx {
                 web3.shutdown()
             }
         }
+
+    /** Fee per gas the same way plan() picks it. Used to compute "Max" for the native coin. */
+    suspend fun maxFeePerGas(chain: Chain): BigInteger = withContext(Dispatchers.IO) {
+        val web3 = Web3j.build(HttpService(chain.rpcUrl))
+        try {
+            val block = web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false).send().ok().block
+            if (block.baseFeePerGasRaw != null) {
+                val tip = try {
+                    web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
+                } catch (_: Exception) {
+                    GWEI
+                }
+                block.baseFeePerGas * BigInteger.valueOf(2) + tip
+            } else {
+                web3.ethGasPrice().send().ok().gasPrice
+            }
+        } finally {
+            web3.shutdown()
+        }
+    }
+
+    /**
+     * Native amount to keep back for fees when sending "max". Uses the real gas estimate of a
+     * transfer, applies the same x1.2 headroom plan() uses when the estimate is above 21000, then
+     * adds 10% for fee movement between now and signing. Some dust may be left over.
+     */
+    suspend fun feeReserve(chain: Chain, from: String): BigInteger {
+        val fee = maxFeePerGas(chain)
+        val base = BigInteger.valueOf(21_000)
+        val est = withContext(Dispatchers.IO) {
+            val web3 = Web3j.build(HttpService(chain.rpcUrl))
+            try {
+                val r = web3.ethEstimateGas(
+                    Transaction.createEtherTransaction(from, null, null, null, from, BigInteger.ONE)
+                ).send()
+                if (r.hasError()) base else r.amountUsed.max(base)
+            } catch (_: Exception) {
+                base
+            } finally {
+                web3.shutdown()
+            }
+        }
+        val gas = if (est == base) est else est * BigInteger.valueOf(12) / BigInteger.TEN
+        return gas * fee * BigInteger.valueOf(11) / BigInteger.TEN
+    }
 }
