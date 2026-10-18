@@ -21,8 +21,6 @@ import org.web3j.utils.Numeric
 import java.io.IOException
 import java.math.BigInteger
 
-const val ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
-
 object Erc20 {
     private suspend fun ethCall(rpcUrl: String, to: String, fn: Function): String =
         withContext(Dispatchers.IO) {

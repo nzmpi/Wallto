@@ -192,6 +192,8 @@ private fun RequestDialog(
                             is Parsed.Typed -> vault.withCredentials(activity) { WcSigner.signTyped(it, parsed.t) }
                             is Parsed.Tx -> {
                                 val pl = plan ?: return@launch
+                                val desc = WcSigner.describe(parsed.t, if (chain!!.chainId == vm.selected?.chainId) vm.tokens else emptyList()).first
+                                vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
                                 vault.withCredentials(activity) { SendTx.signAndSend(pl, it) }
                             }
                             is Parsed.Bad -> return@launch

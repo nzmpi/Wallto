@@ -31,6 +31,9 @@ import androidx.core.content.edit
 import com.nzm.wallet.chain.AppDatabase
 import com.nzm.wallet.chain.Contact
 import com.nzm.wallet.chain.Ens
+import com.nzm.wallet.chain.SendTx
+import com.nzm.wallet.chain.TxRecord
+import com.nzm.wallet.chain.txRecordOf
 import com.nzm.wallet.prices.PriceRepository
 import com.nzm.wallet.prices.PriceSnapshot
 import com.nzm.wallet.wc.WcService
@@ -106,6 +109,15 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     var contacts by mutableStateOf<List<Contact>>(emptyList())
         private set
 
+    private val activityDao = AppDatabase.get(ctx).activityDao()
+    var history by mutableStateOf<List<TxRecord>>(emptyList())
+        private set
+    var historyRefreshing by mutableStateOf(false)
+        private set
+
+    @Volatile private var nextDapp: String? = null
+    @Volatile private var nextNote: String? = null
+
     fun refreshEns() {
         val a = address
         val rpc = ensRpc
@@ -132,6 +144,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 .collect { tokens = it }
         }
         viewModelScope.launch { contactDao.observe().collect { contacts = it } }
+        viewModelScope.launch { activityDao.observeAll().collect { history = it } }
+        SendTx.onBroadcast = { plan, hash ->
+            val d = nextDapp
+            val n = nextNote
+            nextDapp = null
+            nextNote = null
+            recordTx(txRecordOf(plan, hash, d, n))
+        }
     }
 
     fun selectChain(id: Long) {
@@ -241,6 +261,49 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    /** Call right before signing a site's transaction so the history shows where it came from. */
+    fun annotateNext(dapp: String?, note: String?) { nextDapp = dapp; nextNote = note }
+
+    private fun recordTx(r: TxRecord) {
+        viewModelScope.launch { activityDao.upsert(r) }
+        val chain = chains.firstOrNull { it.chainId == r.chainId } ?: return
+        viewModelScope.launch {
+            val ok = try {
+                SendTx.waitForReceipt(chain.rpcUrl, r.hash, 10 * 60_000L)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (ok != null) activityDao.setStatus(r.chainId, r.hash, if (ok) 1 else 2)
+        }
+    }
+
+    /** Re-checks every pending transaction, on whatever chain it was sent. */
+    fun refreshHistory() {
+        viewModelScope.launch {
+            historyRefreshing = true
+            try {
+                for ((chainId, hash) in activityDao.pending()) {
+                    val chain = chains.firstOrNull { it.chainId == chainId } ?: continue
+                    val ok = try {
+                        SendTx.receiptStatus(chain.rpcUrl, hash)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (ok != null) activityDao.setStatus(chainId, hash, if (ok) 1 else 2)
+                }
+            } finally {
+                historyRefreshing = false
+            }
+        }
+    }
+
+    fun removeTx(chainId: Long, hash: String) { viewModelScope.launch { activityDao.delete(chainId, hash) } }
+    fun clearHistory() { viewModelScope.launch { activityDao.deleteAll() } }
 
     fun setPriceKey(key: String?) {
         val k = key?.trim()?.takeIf { it.isNotEmpty() }

@@ -115,9 +115,7 @@ fun MainShell(
                     when (t) {
                         HomeTab.Assets -> AssetsScreen(activity,
                             vm, address, onSend = { sendReq = SendRequest(it, "") }) { menuOpen = true }
-                        HomeTab.Activity -> ComingSoonScreen(
-                            "Activity", "Sent and received transactions will be listed here.", vm
-                        ) { menuOpen = true }
+                        HomeTab.Activity -> ActivityScreen(activity, vm, address)
                         HomeTab.Connect -> Unit // an action, not a tab
                         HomeTab.Contracts -> ContractsScreen(activity, vault, vm, address) { menuOpen = true }
                         HomeTab.Settings -> SettingsScreen(
