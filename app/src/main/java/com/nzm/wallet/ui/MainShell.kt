@@ -39,6 +39,7 @@ import com.nzm.wallet.ui.theme.Dim
 enum class HomeTab(val label: String, val icon: ImageVector) {
     Assets("Assets", Ic.Rows),
     Activity("Activity", Ic.Clock),
+    Connect("Connect", Ic.Scan),
     Contracts("Contracts", Ic.Code),
     Settings("Settings", Ic.Sliders)
 }
@@ -80,6 +81,7 @@ fun MainShell(
                         HomeTab.Activity -> ComingSoonScreen(
                             "Activity", "Sent and received transactions will be listed here.", vm
                         ) { menuOpen = true }
+                        HomeTab.Connect -> ConnectScreen(activity)
                         HomeTab.Contracts -> ContractsScreen(activity, vault, vm, address) { menuOpen = true }
                         HomeTab.Settings -> SettingsScreen(
                             activity, vm, address, settingsPage,
@@ -98,6 +100,7 @@ fun MainShell(
             onSelect = { vm.selectChain(it); menuOpen = false },
             onManage = { tab = HomeTab.Settings; settingsPage = SettingsPage.Chains; menuOpen = false }
         )
+        WcHost(activity, vault, vm, address)
     }
 }
 

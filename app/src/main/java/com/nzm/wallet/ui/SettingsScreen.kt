@@ -5,12 +5,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
@@ -56,7 +58,9 @@ private fun SettingsRoot(
     onWipe: () -> Unit
 ) {
     var lockDialog by remember { mutableStateOf(false) }
+    var keyDialog by remember { mutableStateOf(false) }
     val chain = vm.selected
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp).padding(top = 12.dp)
@@ -73,6 +77,18 @@ private fun SettingsRoot(
         Spacer(Modifier.height(6.dp))
         SettingsRow("Reveal recovery secret", onClick = onReveal)
         SettingsRow("Lock after", lockLabel(vm.lockAfterMs)) { lockDialog = true }
+        Hairline()
+        Spacer(Modifier.height(28.dp))
+        SectionLabel("Prices")
+        Spacer(Modifier.height(6.dp))
+        SettingsRow(
+            "CoinGecko API key",
+            when {
+                !vm.priceKeySet -> "Not set"
+                vm.priceError != null -> "Error"
+                else -> "Set"
+            }
+        ) { keyDialog = true }
         Hairline()
         Spacer(Modifier.height(28.dp))
         Hairline()
@@ -102,6 +118,7 @@ private fun SettingsRoot(
             dismissButton = { TextButton(onClick = { lockDialog = false }) { Text("Close") } }
         )
     }
+    if (keyDialog) PriceKeyDialog(vm) { keyDialog = false }
 }
 
 @Composable
@@ -219,4 +236,39 @@ private fun TokensPage(activity: FragmentActivity, vm: WalletViewModel, address:
             onDismiss = { removing = null }
         )
     }
+}
+
+@Composable
+private fun PriceKeyDialog(vm: WalletViewModel, onClose: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("CoinGecko API key") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Demo key. Dollar prices for mainnets load once a day and when you press refresh. The key is stored encrypted on this phone.")
+                vm.priceError?.let { Text(it, color = Dim.Danger) }
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(if (vm.priceKeySet) "New key" else "API key") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = text.isNotBlank(), onClick = { vm.setPriceKey(text); onClose() }) { Text("Save") }
+        },
+        dismissButton = {
+            Row {
+                if (vm.priceKeySet) {
+                    TextButton(onClick = { vm.setPriceKey(null); onClose() }) { Text("Remove", color = Dim.Danger) }
+                }
+                TextButton(onClick = onClose) { Text("Cancel") }
+            }
+        }
+    )
 }
