@@ -13,15 +13,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.chain.Token
-import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 
 @Composable
 fun AssetsScreen(
     activity: FragmentActivity,
-    vault: Vault,
     vm: WalletViewModel,
     address: String,
+    onSend: (Token?) -> Unit,
     onChainMenu: () -> Unit
 ) {
     val chain = vm.selected ?: return
@@ -29,8 +28,6 @@ fun AssetsScreen(
     LaunchedEffect(address, chain.chainId, chain.rpcUrl, vm.tokens) { vm.refresh() }
     LaunchedEffect(address, vm.ensRpc) { vm.refreshEns() }
 
-    var sendOpen by remember { mutableStateOf(false) }
-    var sendToken by remember { mutableStateOf<Token?>(null) }
     var addToken by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<Token?>(null) }
 
@@ -74,7 +71,7 @@ fun AssetsScreen(
                 )
             }
             Spacer(Modifier.height(28.dp))
-            PrimaryButton("Send", onClick = { sendToken = null; sendOpen = true }, icon = Ic.Send)
+            PrimaryButton("Send", onClick = { onSend(null) }, icon = Ic.Send)
         }
         item {
             Row(
@@ -122,17 +119,11 @@ fun AssetsScreen(
         }
     }
 
-    if (sendOpen) {
-        SendScreen(activity, vault, vm, address, sendToken) { sent ->
-            sendOpen = false
-            if (sent) vm.refresh()
-        }
-    }
     if (addToken) TokenDialog(chain, vm.tokenRepo) { addToken = false }
     info?.let { t ->
         TokenInfoDialog(
             activity, chain, t, address,
-            onSend = { info = null; sendToken = t; sendOpen = true }
+            onSend = { info = null; onSend(t) }
         ) { info = null }
     }
 }

@@ -1,5 +1,6 @@
 package com.nzm.wallet.ui
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -33,8 +34,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.chain.Chain
+import com.nzm.wallet.chain.Token
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.wc.WcService
 
 enum class HomeTab(val label: String, val icon: ImageVector) {
     Assets("Assets", Ic.Rows),
@@ -44,7 +47,9 @@ enum class HomeTab(val label: String, val icon: ImageVector) {
     Settings("Settings", Ic.Sliders)
 }
 
-enum class SettingsPage { Root, Chains, Tokens, Contacts }
+enum class SettingsPage { Root, Chains, Tokens, Contacts, Sites }
+
+private data class SendRequest(val token: Token?, val to: String)
 
 @Composable
 fun MainShell(
@@ -58,6 +63,15 @@ fun MainShell(
     var tab by rememberSaveable { mutableStateOf(HomeTab.Assets) }
     var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.Root) }
     var menuOpen by remember { mutableStateOf(false) }
+    var sendReq by remember { mutableStateOf<SendRequest?>(null) }
+    // errors from the WalletConnect side appear as a toast, whatever tab you are on
+    val wcStatus by WcService.status.collectAsState()
+    LaunchedEffect(wcStatus) {
+        wcStatus?.let {
+            Toast.makeText(activity, it, Toast.LENGTH_LONG).show()
+            WcService.clearStatus()
+        }
+    }
 
     BackHandler(enabled = menuOpen) { menuOpen = false }
     BackHandler(enabled = !menuOpen && tab == HomeTab.Settings && settingsPage != SettingsPage.Root) {
@@ -68,20 +82,43 @@ fun MainShell(
                 !(tab == HomeTab.Settings && settingsPage != SettingsPage.Root)
     ) { tab = HomeTab.Assets }
 
+    fun scan() {
+        scanQr(
+            activity,
+            onResult = { raw ->
+                when (val r = parseScan(raw)) {
+                    is ScanResult.WalletConnect -> {
+                        Toast.makeText(activity, "Connecting…", Toast.LENGTH_SHORT).show()
+                        WcService.pair(r.uri)
+                    }
+                    is ScanResult.Address -> sendReq = SendRequest(null, r.value)
+                    ScanResult.Unknown ->
+                        Toast.makeText(activity, "Not a WalletConnect or address QR code", Toast.LENGTH_LONG).show()
+                }
+            },
+            onError = { Toast.makeText(activity, it, Toast.LENGTH_LONG).show() }
+        )
+    }
+
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = Dim.Bg,
             contentColor = Dim.Ink,
-            bottomBar = { NavBar(tab) { tab = it; menuOpen = false } }
+            bottomBar = {
+                NavBar(tab) { t ->
+                    if (t == HomeTab.Connect) scan() else { tab = t; menuOpen = false }
+                }
+            }
         ) { pad ->
             Box(Modifier.padding(pad)) {
                 Crossfade(targetState = tab, animationSpec = tween(150), label = "tab") { t ->
                     when (t) {
-                        HomeTab.Assets -> AssetsScreen(activity, vault, vm, address) { menuOpen = true }
+                        HomeTab.Assets -> AssetsScreen(activity,
+                            vm, address, onSend = { sendReq = SendRequest(it, "") }) { menuOpen = true }
                         HomeTab.Activity -> ComingSoonScreen(
                             "Activity", "Sent and received transactions will be listed here.", vm
                         ) { menuOpen = true }
-                        HomeTab.Connect -> ConnectScreen(activity)
+                        HomeTab.Connect -> Unit // an action, not a tab
                         HomeTab.Contracts -> ContractsScreen(activity, vault, vm, address) { menuOpen = true }
                         HomeTab.Settings -> SettingsScreen(
                             activity, vm, address, settingsPage,
@@ -101,6 +138,14 @@ fun MainShell(
             onManage = { tab = HomeTab.Settings; settingsPage = SettingsPage.Chains; menuOpen = false }
         )
         WcHost(activity, vault, vm, address)
+        sendReq?.let { r ->
+            key(r) {
+                SendScreen(activity, vault, vm, address, r.token, r.to) { sent ->
+                    sendReq = null
+                    if (sent) vm.refresh()
+                }
+            }
+        }
     }
 }
 

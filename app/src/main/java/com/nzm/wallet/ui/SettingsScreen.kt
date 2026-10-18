@@ -21,6 +21,7 @@ import com.nzm.wallet.chain.Contact
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.chain.Token
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.launch
 import org.web3j.crypto.Keys
 
@@ -50,6 +51,7 @@ fun SettingsScreen(
             SettingsPage.Chains -> ChainsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Tokens -> TokensPage(activity, vm, address) { onPage(SettingsPage.Root) }
             SettingsPage.Contacts -> ContactsPage(vm) { onPage(SettingsPage.Root) }
+            SettingsPage.Sites -> ConnectedSitesPage(activity) { onPage(SettingsPage.Root) }
         }
     }
 }
@@ -61,6 +63,7 @@ private fun SettingsRoot(
     onReveal: () -> Unit,
     onWipe: () -> Unit
 ) {
+    val sessions by WcService.sessions.collectAsState()
     var lockDialog by remember { mutableStateOf(false) }
     var keyDialog by remember { mutableStateOf(false) }
     val chain = vm.selected
@@ -80,6 +83,11 @@ private fun SettingsRoot(
         SectionLabel("Address book")
         Spacer(Modifier.height(6.dp))
         SettingsRow("Contacts", "${vm.contacts.size}") { onPage(SettingsPage.Contacts) }
+        Hairline()
+        Spacer(Modifier.height(28.dp))
+        SectionLabel("Connections")
+        Spacer(Modifier.height(6.dp))
+        SettingsRow("Connected sites", "${sessions.size}") { onPage(SettingsPage.Sites) }
         Hairline()
         Spacer(Modifier.height(28.dp))
         SectionLabel("Security")

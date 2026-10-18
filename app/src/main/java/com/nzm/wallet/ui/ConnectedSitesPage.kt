@@ -12,30 +12,25 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.wc.WcService
 
 @Composable
-fun ConnectScreen(activity: FragmentActivity) {
+fun ConnectedSitesPage(activity: FragmentActivity, onBack: () -> Unit) {
     val ready by WcService.ready.collectAsState()
     val sessions by WcService.sessions.collectAsState()
-    val status by WcService.status.collectAsState()
     var projectId by remember { mutableStateOf(WcService.projectId(activity)) }
     var idDialog by remember { mutableStateOf(false) }
     var toDisconnect by remember { mutableStateOf<String?>(null) }
-    var scanError by remember { mutableStateOf<String?>(null) }
+    var pasteError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(ready) { if (ready) WcService.refreshSessions() }
-    LaunchedEffect(Unit) { WcService.clearStatus() }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 24.dp)
     ) {
-        ScreenTitle("Connect")
+        PageHeader("Connected sites", onBack)
         Spacer(Modifier.height(20.dp))
 
         if (projectId == null) {
@@ -47,30 +42,28 @@ fun ConnectScreen(activity: FragmentActivity) {
             Spacer(Modifier.height(20.dp))
             PrimaryButton("Add project ID", onClick = { idDialog = true })
         } else {
-            PrimaryButton("Scan QR", icon = Ic.Scan, enabled = ready, onClick = {
-                scanError = null
-                val options = GmsBarcodeScannerOptions.Builder()
-                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
-                GmsBarcodeScanning.getClient(activity, options).startScan()
-                    .addOnSuccessListener { b -> b.rawValue?.let { WcService.pair(it) } }
-                    .addOnFailureListener { scanError = it.message ?: "Scan failed" }
-            })
-            Spacer(Modifier.height(12.dp))
+            Text(
+                "To connect a site, tap Connect in the bottom bar and scan its QR code. " +
+                        "On the same phone, copy the site's link and paste it here.",
+                fontSize = 15.sp, color = Dim.Mid
+            )
+            Spacer(Modifier.height(16.dp))
             OutlineButton("Paste link", icon = Ic.Copy, onClick = {
                 val cm = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
-                if (text.isNullOrBlank()) scanError = "Clipboard is empty" else WcService.pair(text)
+                if (text.isNullOrBlank()) pasteError = "Clipboard is empty"
+                else { pasteError = null; WcService.pair(text) }
             })
-            if (!ready) {
-                Spacer(Modifier.height(12.dp))
-                Text("Starting WalletConnect…", fontSize = 14.sp, color = Dim.Mid)
-            }
-            (scanError ?: status)?.let {
-                Spacer(Modifier.height(12.dp))
+            pasteError?.let {
+                Spacer(Modifier.height(10.dp))
                 Text(it, fontSize = 14.sp, color = Dim.Danger)
             }
+            if (!ready) {
+                Spacer(Modifier.height(10.dp))
+                Text("Starting WalletConnect…", fontSize = 14.sp, color = Dim.Mid)
+            }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(28.dp))
             SectionLabel("Connected sites")
             Spacer(Modifier.height(6.dp))
             if (sessions.isEmpty()) {
@@ -96,7 +89,7 @@ fun ConnectScreen(activity: FragmentActivity) {
 
     toDisconnect?.let { topic ->
         ConfirmDialog(
-            "Disconnect site?", "The site loses access to your address. Nothing on-chain changes.",
+            "Disconnect site?", "The site loses access to your address. Nothing onchain changes.",
             "Disconnect",
             onConfirm = { WcService.disconnect(topic); toDisconnect = null },
             onDismiss = { toDisconnect = null }
