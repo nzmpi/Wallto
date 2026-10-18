@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.math.BigInteger
 import androidx.core.content.edit
+import com.nzm.wallet.chain.Ens
 import com.nzm.wallet.prices.PriceRepository
 import com.nzm.wallet.prices.PriceSnapshot
 import com.nzm.wallet.wc.WcService
@@ -94,6 +95,27 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private var priceJob: Job? = null
     private val usd = NumberFormat.getCurrencyInstance(Locale.US)
 
+    var ensName by mutableStateOf<String?>(null)
+        private set
+    val ensRpc: String? get() = chains.firstOrNull { it.chainId == 1L }?.rpcUrl
+    private var ensJob: Job? = null
+
+    fun refreshEns() {
+        val a = address
+        val rpc = ensRpc
+        ensJob?.cancel()
+        if (a == null || rpc == null) { ensName = null; return }
+        ensJob = viewModelScope.launch {
+            try {
+                ensName = Ens.reverse(rpc, a)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // network problem: keep what is shown
+            }
+        }
+    }
+
     init {
         viewModelScope.launch { chainRepo.seedDefaults() }
         viewModelScope.launch { chainRepo.chains.collect { chains = it } }
@@ -122,6 +144,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         refreshJob?.cancel()
         loading = false
         resetBalances()
+        ensName = null
     }
 
     private fun resetBalances() {

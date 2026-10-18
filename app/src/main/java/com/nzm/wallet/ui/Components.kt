@@ -144,7 +144,7 @@ fun ChainChip(name: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun AddressPill(address: String) {
+fun AddressPill(address: String, name: String? = null) {
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
@@ -168,7 +168,12 @@ fun AddressPill(address: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(if (copied) "Copied" else shortAddress(address), fontSize = 14.sp, color = tint)
+        Text(
+            if (copied) "Copied" else (name ?: shortAddress(address)),
+            fontSize = 14.sp, color = tint, maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 180.dp)
+        )
         Icon(if (copied) Ic.Check else Ic.Copy, null, Modifier.size(16.dp), tint = tint)
     }
 }
