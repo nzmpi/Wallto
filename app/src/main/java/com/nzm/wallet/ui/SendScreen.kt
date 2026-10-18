@@ -51,6 +51,7 @@ fun SendScreen(
     vm: WalletViewModel,
     from: String,
     initialToken: Token?,
+    initialTo: String = "",
     onClose: (sent: Boolean) -> Unit
 ) {
     val chain = vm.selected ?: return
@@ -63,7 +64,7 @@ fun SendScreen(
     val decimals = token?.decimals ?: chain.decimals
     val balance: BigInteger? = if (token == null) vm.nativeBalance else vm.tokenBalances[token.address]
 
-    var to by remember { mutableStateOf("") }
+    var to by remember { mutableStateOf(initialTo) }
     var amount by remember { mutableStateOf("") }
     var resolved by remember { mutableStateOf<String?>(null) }
     var resolving by remember { mutableStateOf(false) }

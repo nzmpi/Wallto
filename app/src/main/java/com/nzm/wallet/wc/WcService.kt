@@ -94,7 +94,10 @@ object WcService {
     fun pair(uri: String) {
         val u = uri.trim()
         if (!u.startsWith("wc:")) { _status.value = "Not a WalletConnect link"; return }
-        if (!_ready.value) { _status.value = "WalletConnect not ready"; return }
+        if (!_ready.value) {
+            _status.value = "WalletConnect is not ready. Add the Reown project ID in Settings → Connected sites, then restart the app."
+            return
+        }
         _status.value = null
         WalletKit.pair(
             Wallet.Params.Pair(u),
