@@ -33,6 +33,10 @@ fun AssetsScreen(
     var addToken by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<Token?>(null) }
 
+    // hidden only when the balance is known to be exactly 0; unknown or failed stays visible
+    val shownTokens = vm.tokens.filter { vm.tokenBalances[it.address]?.signum() != 0 }
+    val hiddenCount = vm.tokens.size - shownTokens.size
+
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         item {
             Row(
@@ -93,7 +97,7 @@ fun AssetsScreen(
                 native = true
             )
         }
-        items(vm.tokens, key = { it.address }) { t ->
+        items(shownTokens, key = { it.address }) { t ->
             val known = vm.tokenBalances.containsKey(t.address)
             val raw = vm.tokenBalances[t.address]
             AssetRow(
@@ -107,12 +111,18 @@ fun AssetsScreen(
         }
         item {
             Hairline()
+            if (hiddenCount > 0) {
+                Text(
+                    "$hiddenCount token${if (hiddenCount == 1) "" else "s"} with zero balance hidden. Manage in Settings → Tokens.",
+                    fontSize = 13.sp, color = Dim.Mid, modifier = Modifier.padding(top = 12.dp)
+                )
+            }
             Spacer(Modifier.height(24.dp))
         }
     }
 
     if (sendOpen) {
-        SendDialog(activity, vault, chain, address, vm.tokens, sendToken) { sent ->
+        SendDialog(activity, vault, chain, address, shownTokens, sendToken) { sent ->
             sendOpen = false
             if (sent) vm.refresh()
         }
