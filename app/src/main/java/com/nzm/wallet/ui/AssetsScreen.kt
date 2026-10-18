@@ -27,6 +27,7 @@ fun AssetsScreen(
     val chain = vm.selected ?: return
 
     LaunchedEffect(address, chain.chainId, chain.rpcUrl, vm.tokens) { vm.refresh() }
+    LaunchedEffect(address, vm.ensRpc) { vm.refreshEns() }
 
     var sendOpen by remember { mutableStateOf(false) }
     var sendToken by remember { mutableStateOf<Token?>(null) }
@@ -44,7 +45,7 @@ fun AssetsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AddressPill(address)
+                AddressPill(address, vm.ensName)
                 ChainChip(chain.name, onChainMenu)
             }
         }
@@ -122,7 +123,7 @@ fun AssetsScreen(
     }
 
     if (sendOpen) {
-        SendDialog(activity, vault, chain, address, shownTokens, sendToken) { sent ->
+        SendDialog(activity, vault, chain, address, shownTokens, sendToken, ensRpc = vm.ensRpc) { sent ->
             sendOpen = false
             if (sent) vm.refresh()
         }

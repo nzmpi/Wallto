@@ -17,6 +17,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.math.BigInteger
 import androidx.core.net.toUri
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun SendDialog(
@@ -26,6 +28,7 @@ fun SendDialog(
     from: String,
     tokens: List<Token>,
     initialToken: Token?, // null = native coin
+    ensRpc: String? = null,
     onClose: (sent: Boolean) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -41,6 +44,33 @@ fun SendDialog(
     var pickerOpen by remember { mutableStateOf(false) }
     val symbol = token?.symbol ?: chain.symbol
     val decimals = token?.decimals ?: chain.decimals
+
+    var resolved by remember { mutableStateOf<String?>(null) }
+    var resolving by remember { mutableStateOf(false) }
+    var ensError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(to) {
+        resolved = null
+        ensError = null
+        resolving = false
+        val name = to.trim()
+        if (!Ens.looksLikeName(name)) return@LaunchedEffect
+        if (ensRpc == null) {
+            ensError = "Add Ethereum Mainnet (chain ID 1) to resolve ENS names"
+            return@LaunchedEffect
+        }
+        delay(600.milliseconds) // wait for typing to stop
+        resolving = true
+        try {
+            resolved = Ens.resolve(ensRpc, name) ?: run { ensError = "This name has no address"; null }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ensError = e.message ?: "Could not resolve"
+        } finally {
+            resolving = false
+        }
+    }
 
     // review shows exact amounts: full precision, no rounding
     fun fmt(v: BigInteger, dec: Int, sym: String) = "${Rpc.formatUnits(v, dec, dec)} $sym"
@@ -94,6 +124,16 @@ fun SendDialog(
                         if (chain.isTestnet) Text("Network: ${chain.name} (Testnet)")
                         else Text("REAL FUNDS on ${chain.name}", color = MaterialTheme.colorScheme.error)
                         Text("From: ${p.from}")
+                        if (resolved != null) {
+                            Text("ENS name: ${to.trim()}")
+                            if (chain.chainId != 1L) {
+                                Text(
+                                    "Resolved on Ethereum. Make sure you control this address on ${chain.name}. " +
+                                            "Contract wallets (like Safe) may not exist at the same address on other chains.",
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
                         if (p.token != null && p.tokenAmount != null) {
                             Text("Token: ${p.token.symbol} (${p.token.name})")
                             Text("Token contract: ${p.token.address}")
@@ -128,9 +168,12 @@ fun SendDialog(
                             }
                         }
                         OutlinedTextField(
-                            to, { to = it }, label = { Text("Recipient address") },
+                            to, { to = it }, label = { Text("Recipient address or ENS name") },
                             modifier = Modifier.fillMaxWidth()
                         )
+                        if (resolving) Text("Resolving…")
+                        resolved?.let { Text("→ $it") }
+                        ensError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                         OutlinedTextField(
                             amount, { amount = it }, label = { Text("Amount ($symbol)") }, singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
@@ -142,14 +185,16 @@ fun SendDialog(
             }
         },
         confirmButton = {
-            TextButton(enabled = !busy, onClick = {
+            TextButton(enabled = !busy && !resolving, onClick = {
                 when {
                     h != null -> onClose(true)
                     p != null -> launchSafe {
                         hash = vault.withCredentials(activity) { creds -> SendTx.signAndSend(p, creds) }
                     }
                     else -> launchSafe {
-                        val dest = to.trim()
+                        val typed = to.trim()
+                        if (Ens.looksLikeName(typed)) require(resolved != null) { ensError ?: "Name not resolved yet" }
+                        val dest = resolved ?: typed
                         require(SendTx.isValidAddress(dest)) { "Invalid recipient address or checksum" }
                         require(!dest.equals(ZERO_ADDRESS, ignoreCase = true)) { "Recipient is the zero address" }
                         val units = SendTx.parseAmount(amount, decimals)
