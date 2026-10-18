@@ -65,10 +65,11 @@ interface TokenDao {
     suspend fun deleteAllFor(chainId: Long)
 }
 
-@Database(entities = [Chain::class, Token::class], version = 2, exportSchema = false)
+@Database(entities = [Chain::class, Token::class, Contact::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chainDao(): ChainDao
     abstract fun tokenDao(): TokenDao
+    abstract fun contactDao(): ContactDao
 
     companion object {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -81,12 +82,40 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             }
         }
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `contacts` (" +
+                            "`address` TEXT NOT NULL, `name` TEXT NOT NULL, `ens` TEXT, " +
+                            "PRIMARY KEY(`address`))"
+                )
+            }
+        }
 
         @Volatile private var instance: AppDatabase? = null
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "wallet.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build().also { instance = it }
         }
     }
+}
+
+@Entity(tableName = "contacts")
+data class Contact(
+    @PrimaryKey val address: String, // checksummed
+    val name: String,
+    val ens: String? = null          // only a note, never used for sending
+)
+
+@Dao
+interface ContactDao {
+    @Query("SELECT * FROM contacts ORDER BY name COLLATE NOCASE")
+    fun observe(): Flow<List<Contact>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(contact: Contact)
+
+    @Query("DELETE FROM contacts WHERE address = :address")
+    suspend fun delete(address: String)
 }

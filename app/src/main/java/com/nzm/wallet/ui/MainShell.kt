@@ -44,7 +44,7 @@ enum class HomeTab(val label: String, val icon: ImageVector) {
     Settings("Settings", Ic.Sliders)
 }
 
-enum class SettingsPage { Root, Chains, Tokens }
+enum class SettingsPage { Root, Chains, Tokens, Contacts }
 
 @Composable
 fun MainShell(

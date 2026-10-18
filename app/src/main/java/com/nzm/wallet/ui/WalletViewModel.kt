@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.math.BigInteger
 import androidx.core.content.edit
+import com.nzm.wallet.chain.AppDatabase
+import com.nzm.wallet.chain.Contact
 import com.nzm.wallet.chain.Ens
 import com.nzm.wallet.prices.PriceRepository
 import com.nzm.wallet.prices.PriceSnapshot
@@ -100,6 +102,10 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     val ensRpc: String? get() = chains.firstOrNull { it.chainId == 1L }?.rpcUrl
     private var ensJob: Job? = null
 
+    private val contactDao = AppDatabase.get(ctx).contactDao()
+    var contacts by mutableStateOf<List<Contact>>(emptyList())
+        private set
+
     fun refreshEns() {
         val a = address
         val rpc = ensRpc
@@ -125,6 +131,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else tokenRepo.observe(id) }
                 .collect { tokens = it }
         }
+        viewModelScope.launch { contactDao.observe().collect { contacts = it } }
     }
 
     fun selectChain(id: Long) {
@@ -133,6 +140,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit { putLong("chain_id", id) }
         resetBalances()
     }
+
+    fun saveContact(c: Contact) { viewModelScope.launch { contactDao.upsert(c) } }
+    fun deleteContact(address: String) { viewModelScope.launch { contactDao.delete(address) } }
 
     fun setLockAfter(ms: Long) {
         lockAfterMs = ms
