@@ -28,7 +28,7 @@ data class Token(
 
 @Dao
 interface ChainDao {
-    @Query("SELECT * FROM chains ORDER BY isTestnet, name")
+    @Query("SELECT * FROM chains ORDER BY isTestnet, chainId")
     fun observeAll(): Flow<List<Chain>>
 
     @Query("SELECT * FROM chains WHERE chainId = :id")

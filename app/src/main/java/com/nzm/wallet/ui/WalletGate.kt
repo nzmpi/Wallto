@@ -29,6 +29,7 @@ import com.nzm.wallet.storage.KeystoreVault
 import com.nzm.wallet.storage.SecretType
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -185,12 +186,18 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
             text = "This deletes the wallet from this device. Without your written phrase or private key, it cannot be recovered.",
             confirmLabel = "Wipe",
             onConfirm = {
-                vault.delete()
-                hasWallet = false
-                backup = null
-                status = null
                 confirmWipe = false
-                vm.clearSession()
+                launchSafe {
+                    // biometric prompt; throws if cancelled or failed, so nothing is deleted
+                    val (_, bytes) = vault.load(activity)
+                    bytes.fill(0)
+                    runCatching { WcService.sessions.value.forEach { WcService.disconnect(it.topic) } }
+                    vault.delete()
+                    hasWallet = false
+                    backup = null
+                    status = null
+                    vm.clearSession()
+                }
             },
             onDismiss = { confirmWipe = false }
         )
