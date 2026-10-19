@@ -12,15 +12,6 @@ import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 
 @Composable
-fun ComingSoonScreen(title: String, message: String, vm: WalletViewModel, onChainMenu: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).padding(top = 12.dp)) {
-        TabHeader(title, vm.selected?.name, onChainMenu)
-        Spacer(Modifier.height(32.dp))
-        Text(message, fontSize = 15.sp, color = Dim.Mid)
-    }
-}
-
-@Composable
 fun ContractsScreen(
     activity: FragmentActivity,
     vault: Vault,

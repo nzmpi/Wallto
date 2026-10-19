@@ -47,6 +47,8 @@ data class TxPlan(
 
 object SendTx {
     private val GWEI = BigInteger.valueOf(1_000_000_000L)
+    /** Called after every successful broadcast. The history records from here. */
+    @Volatile var onBroadcast: ((TxPlan, String) -> Unit)? = null
 
     fun isValidAddress(input: String): Boolean {
         val s = input.trim()
@@ -144,7 +146,9 @@ object SendTx {
             try {
                 val r = web3.ethSendRawTransaction(hex).send()
                 if (r.hasError()) throw IOException(r.error.message)
-                r.transactionHash
+                val hash = r.transactionHash
+                try { onBroadcast?.invoke(plan, hash) } catch (_: Exception) { /* history must never break a tx */ }
+                hash
             } finally {
                 web3.shutdown()
             }
@@ -166,6 +170,17 @@ object SendTx {
                 web3.shutdown()
             }
         }
+
+    /** true = success, false = reverted, null = no receipt yet. */
+    suspend fun receiptStatus(rpcUrl: String, hash: String): Boolean? = withContext(Dispatchers.IO) {
+        val web3 = Web3j.build(HttpService(rpcUrl))
+        try {
+            val receipt = web3.ethGetTransactionReceipt(hash).send().transactionReceipt
+            if (receipt.isPresent) receipt.get().isStatusOK else null
+        } finally {
+            web3.shutdown()
+        }
+    }
 
     /** Fee per gas the same way plan() picks it. Used to compute "Max" for the native coin. */
     suspend fun maxFeePerGas(chain: Chain): BigInteger = withContext(Dispatchers.IO) {

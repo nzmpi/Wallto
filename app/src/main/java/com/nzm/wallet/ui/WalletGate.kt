@@ -188,7 +188,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
             onConfirm = {
                 confirmWipe = false
                 launchSafe {
-                    // biometric prompt; throws if cancelled or failed, so nothing is deleted
+                    // biometric prompt; throws if canceled or failed, so nothing is deleted
                     val (_, bytes) = vault.load(activity)
                     bytes.fill(0)
                     runCatching { WcService.sessions.value.forEach { WcService.disconnect(it.topic) } }
@@ -196,6 +196,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                     hasWallet = false
                     backup = null
                     status = null
+                    vm.clearHistory()
                     vm.clearSession()
                 }
             },
