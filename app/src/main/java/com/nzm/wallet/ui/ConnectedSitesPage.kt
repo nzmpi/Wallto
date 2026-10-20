@@ -16,7 +16,7 @@ import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.wc.WcService
 
 @Composable
-fun ConnectedSitesPage(activity: FragmentActivity, onBack: () -> Unit) {
+fun ConnectedSitesPage(activity: FragmentActivity, vm: WalletViewModel, onBack: () -> Unit) {
     val ready by WcService.ready.collectAsState()
     val sessions by WcService.sessions.collectAsState()
     var projectId by remember { mutableStateOf(WcService.projectId(activity)) }
@@ -74,7 +74,9 @@ fun ConnectedSitesPage(activity: FragmentActivity, onBack: () -> Unit) {
             sessions.forEach { s ->
                 SettingsRow(
                     label = s.metaData?.name?.ifBlank { null } ?: "Unknown site",
-                    value = s.metaData?.url?.removePrefix("https://")?.take(28)
+                    value = if (vm.wallets.size > 1)
+                        vm.wallets.firstOrNull { it.address.equals(WcService.accountOf(s), true) }?.name ?: "Removed wallet"
+                    else s.metaData?.url?.removePrefix("https://")?.take(28)
                 ) { toDisconnect = s.topic }
             }
             if (sessions.isNotEmpty()) Hairline()

@@ -20,6 +20,7 @@ import com.nzm.wallet.wc.*
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import org.web3j.crypto.Credentials
 
 @Composable
 fun WcHost(activity: FragmentActivity, vault: Vault, vm: WalletViewModel, address: String) {
@@ -43,12 +44,14 @@ private fun verdict(v: Wallet.Model.VerifyContext): Pair<String, Boolean> = when
     else -> "Domain could not be verified. Check the name and address yourself." to false
 }
 
+/** [address] is the active wallet: a new connection always uses it. */
 @Composable
 private fun ProposalDialog(vm: WalletViewModel, address: String, item: WcService.Proposal) {
     val p = item.proposal
     val (warn, blocked) = verdict(item.verify)
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    val walletName = vm.activeWallet?.name ?: "Wallet"
     AlertDialog(
         onDismissRequest = { },
         title = { Text("Connect to ${p.name}") },
@@ -56,8 +59,11 @@ private fun ProposalDialog(vm: WalletViewModel, address: String, item: WcService
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(p.url, fontSize = 14.sp, color = Dim.Mid)
                 Text(warn, color = if (blocked) Dim.Danger else Dim.Mid, fontSize = 14.sp)
-                Text("Shares your address ${shortAddress(address)} on all chains saved in this wallet. " +
+                Text("Wallet: $walletName", fontWeight = FontWeight.SemiBold)
+                Text("Shares its address ${shortAddress(address)} on all chains saved in this wallet. " +
                         "The site can request signatures and transactions. Each one needs your approval.")
+                if (vm.wallets.size > 1)
+                    Text("Wrong wallet? Reject, switch wallet, then connect again.", fontSize = 13.sp, color = Dim.Mid)
                 error?.let { Text(it, color = Dim.Danger) }
             }
         },
@@ -78,6 +84,7 @@ private sealed interface Parsed {
     class Bad(val why: String) : Parsed
 }
 
+/** [address] is the active wallet. The request is signed by the wallet the site connected with. */
 @Composable
 private fun RequestDialog(
     activity: FragmentActivity,
@@ -93,18 +100,25 @@ private fun RequestDialog(
     val site = req.peerMetaData
     val scope = rememberCoroutineScope()
 
+    // wallet this site connected with
+    val signer = remember(item) { WcService.sessionAddress(req.topic) }
+    val signerRow = vm.wallets.firstOrNull { it.address.equals(signer, ignoreCase = true) }
+    val isActive = signer != null && signer.equals(address, ignoreCase = true)
+
     val parsed = remember(item) {
         if (chain == null) Parsed.Bad("Chain ${req.chainId} is not saved in this wallet. Add it first.")
+        else if (signer == null || signerRow == null)
+            Parsed.Bad("The wallet this site connected with is not on this phone. Disconnect the site, then connect again.")
         else try {
             when (req.request.method) {
-                WcService.PERSONAL_SIGN -> Parsed.Msg(WcSigner.parsePersonal(req.request.params, address))
+                WcService.PERSONAL_SIGN -> Parsed.Msg(WcSigner.parsePersonal(req.request.params, signer))
                 WcService.TYPED_V4 -> {
-                    val t = WcSigner.parseTyped(req.request.params, address)
+                    val t = WcSigner.parseTyped(req.request.params, signer)
                     if (t.domainChainId != null && t.domainChainId != chain.chainId)
                         Parsed.Bad("Signed data is for chain ${t.domainChainId}, request is for ${chain.chainId}.")
                     else Parsed.Typed(t)
                 }
-                WcService.SEND_TX -> Parsed.Tx(WcSigner.parseTx(req.request.params, address))
+                WcService.SEND_TX -> Parsed.Tx(WcSigner.parseTx(req.request.params, signer))
                 else -> Parsed.Bad("Unsupported method")
             }
         } catch (e: Exception) {
@@ -116,15 +130,24 @@ private fun RequestDialog(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    if (parsed is Parsed.Tx && chain != null) {
+    if (parsed is Parsed.Tx && chain != null && signer != null) {
         LaunchedEffect(item) {
             try {
-                plan = SendTx.plan(chain, address, parsed.t.to, parsed.t.value, data = parsed.t.data)
+                plan = SendTx.plan(chain, signer, parsed.t.to, parsed.t.value, data = parsed.t.data)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 error = e.message ?: "Could not prepare transaction"
             }
+        }
+    }
+
+    /** Opens the signer wallet's secret (one biometric prompt) and checks it is the expected account. */
+    suspend fun <T> asSigner(block: suspend (Credentials) -> T): T {
+        val row = signerRow ?: error("Wallet not found")
+        return vault.withCredentials(activity, row.id) { c ->
+            check(c.address.equals(signer, ignoreCase = true)) { "Wallet key does not match the site's account" }
+            block(c)
         }
     }
 
@@ -150,6 +173,18 @@ private fun RequestDialog(
             ) {
                 Text("${site?.name ?: "Unknown site"}\n${site?.url ?: ""}", fontSize = 14.sp, color = Dim.Mid)
                 Text(warn, fontSize = 14.sp, color = if (blocked) Dim.Danger else Dim.Mid)
+                if (signerRow != null && signer != null) {
+                    Text(
+                        "Wallet: ${signerRow.name} (${shortAddress(signer)})",
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isActive) Dim.Ink else Dim.Danger
+                    )
+                    if (!isActive)
+                        Text(
+                            "This is not your active wallet. It will be signed by ${signerRow.name}.",
+                            fontSize = 13.sp, color = Dim.Danger
+                        )
+                }
                 chain?.let { Text("Network: ${it.name}" + if (it.isTestnet) " (testnet)" else "", fontWeight = FontWeight.SemiBold) }
                 when (parsed) {
                     is Parsed.Bad -> Text(parsed.why, color = Dim.Danger)
@@ -188,18 +223,18 @@ private fun RequestDialog(
                     error = null
                     try {
                         val result: String = when (parsed) {
-                            is Parsed.Msg -> vault.withCredentials(activity) { WcSigner.signPersonal(it, parsed.m.bytes) }
-                            is Parsed.Typed -> vault.withCredentials(activity) { WcSigner.signTyped(it, parsed.t) }
+                            is Parsed.Msg -> asSigner { WcSigner.signPersonal(it, parsed.m.bytes) }
+                            is Parsed.Typed -> asSigner { WcSigner.signTyped(it, parsed.t) }
                             is Parsed.Tx -> {
                                 val pl = plan ?: return@launch
                                 val desc = WcSigner.describe(parsed.t, if (chain!!.chainId == vm.selected?.chainId) vm.tokens else emptyList()).first
                                 vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
-                                vault.withCredentials(activity) { SendTx.signAndSend(pl, it) }
+                                asSigner { SendTx.signAndSend(pl, it) }
                             }
                             is Parsed.Bad -> return@launch
                         }
                         WcService.respondResult(item, result)
-                        if (parsed is Parsed.Tx) vm.refresh()
+                        if (parsed is Parsed.Tx && isActive) vm.refresh()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

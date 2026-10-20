@@ -21,6 +21,7 @@ fun AssetsScreen(
     vm: WalletViewModel,
     address: String,
     onSend: (Token?) -> Unit,
+    onWalletMenu: () -> Unit,
     onChainMenu: () -> Unit
 ) {
     val chain = vm.selected ?: return
@@ -42,7 +43,14 @@ fun AssetsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AddressPill(address, vm.ensName)
+                Row(
+                    Modifier.weight(1f, fill = false).padding(end = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    WalletChip(vm.walletLabel(address), onWalletMenu)
+                    CopyAddressButton(address)
+                }
                 ChainChip(chain.name, onChainMenu)
             }
         }

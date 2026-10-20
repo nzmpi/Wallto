@@ -143,8 +143,35 @@ fun ChainChip(name: String, onClick: () -> Unit) {
     }
 }
 
+/** Name shown in the header: ENS, else your own name, else short address. */
+fun WalletViewModel.walletLabel(address: String): String {
+    val custom = activeWallet?.name?.takeIf { !Regex("Wallet \\d+").matches(it) }
+    return ensName ?: custom ?: shortAddress(address)
+}
+
 @Composable
-fun AddressPill(address: String, name: String? = null) {
+fun WalletChip(label: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    Row(
+        Modifier
+            .height(44.dp)
+            .clip(shape)
+            .border(1.5.dp, Dim.Outline, shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 160.dp)
+        )
+        Icon(Ic.ChevronDown, "Switch wallet", Modifier.size(14.dp), tint = Dim.Mid)
+    }
+}
+
+@Composable
+fun CopyAddressButton(address: String) {
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
@@ -153,28 +180,24 @@ fun AddressPill(address: String, name: String? = null) {
             copied = false
         }
     }
-    val tint = if (copied) Dim.Accent else Dim.Mid
-    Row(
+    Box(
         Modifier
-            .height(44.dp)
+            .size(44.dp)
+            .offset((-12).dp)
             .clip(RoundedCornerShape(22.dp))
-            .border(1.5.dp, Dim.Outline, RoundedCornerShape(22.dp))
             .clickable(role = Role.Button) {
                 context.getSystemService(ClipboardManager::class.java)
                     .setPrimaryClip(ClipData.newPlainText("address", address))
                 copied = true
-            }
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            },
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            if (copied) "Copied" else (name ?: shortAddress(address)),
-            fontSize = 14.sp, color = tint, maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 180.dp)
+        Icon(
+            if (copied) Ic.Check else Ic.Copy,
+            if (copied) "Copied" else "Copy address",
+            Modifier.size(18.dp),
+            tint = if (copied) Dim.Accent else Dim.Mid
         )
-        Icon(if (copied) Ic.Check else Ic.Copy, null, Modifier.size(16.dp), tint = tint)
     }
 }
 

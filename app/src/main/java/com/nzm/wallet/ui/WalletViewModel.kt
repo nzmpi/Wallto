@@ -33,9 +33,12 @@ import com.nzm.wallet.chain.Contact
 import com.nzm.wallet.chain.Ens
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.chain.TxRecord
+import com.nzm.wallet.chain.WalletRow
+import com.nzm.wallet.chain.syncWithVault
 import com.nzm.wallet.chain.txRecordOf
 import com.nzm.wallet.prices.PriceRepository
 import com.nzm.wallet.prices.PriceSnapshot
+import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.Dispatchers
 import java.math.BigDecimal
@@ -61,8 +64,22 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     val chainRepo = ChainRepository(ctx)
     val tokenRepo = TokenRepository(ctx)
 
-    /** Set after unlock, null while locked. */
+    /** Address of the active wallet. Set after unlock, null while locked. */
     var address by mutableStateOf<String?>(null)
+
+    // ---- wallets ----
+    private val walletDao = AppDatabase.get(ctx).walletDao()
+
+    /** Public info of every wallet (name, address). Safe to show while unlocked. */
+    var wallets by mutableStateOf<List<WalletRow>>(emptyList())
+        private set
+    /** Id of the active wallet. Kept while locked, so unlock opens the same wallet. */
+    var activeWalletId by mutableStateOf<String?>(null)
+        private set
+    val activeWallet: WalletRow? get() = wallets.firstOrNull { it.id == activeWalletId }
+    /** UI sets these. WalletGate shows the add flow / delete confirm. */
+    var addWalletRequest by mutableStateOf(false)
+    var deleteWalletRequest by mutableStateOf<String?>(null)
 
     var chains by mutableStateOf<List<Chain>>(emptyList())
         private set
@@ -110,8 +127,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private val activityDao = AppDatabase.get(ctx).activityDao()
-    var history by mutableStateOf<List<TxRecord>>(emptyList())
-        private set
+    private var allHistory by mutableStateOf<List<TxRecord>>(emptyList())
+
+    /** Only the active wallet's transactions. */
+    val history: List<TxRecord>
+        get() {
+            val a = address ?: return emptyList()
+            return allHistory.filter { it.sender.equals(a, ignoreCase = true) }
+        }
     var historyRefreshing by mutableStateOf(false)
         private set
 
@@ -144,7 +167,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 .collect { tokens = it }
         }
         viewModelScope.launch { contactDao.observe().collect { contacts = it } }
-        viewModelScope.launch { activityDao.observeAll().collect { history = it } }
+        viewModelScope.launch { activityDao.observeAll().collect { allHistory = it } }
+        viewModelScope.launch { walletDao.observe().collect { wallets = it } }
         SendTx.onBroadcast = { plan, hash ->
             val d = nextDapp
             val n = nextNote
@@ -154,6 +178,59 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- wallet management ----
+    /** Call after a successful unlock of wallet [id]. Fills the wallet list, stores its address. */
+    suspend fun onUnlocked(vault: Vault, id: String, addr: String) {
+        walletDao.syncWithVault(vault.ids())
+        walletDao.setAddress(id, addr)
+        activeWalletId = id
+        address = addr
+    }
+
+    fun hasAddress(addr: String) = wallets.any { it.address.equals(addr, ignoreCase = true) }
+
+    /** After Vault.save of a new wallet: list it, make it the active one, show it. */
+    suspend fun addWallet(vault: Vault, id: String, addr: String) {
+        walletDao.syncWithVault(vault.ids())
+        walletDao.setAddress(id, addr)
+        vault.activeId = id
+        showWallet(id, addr)
+    }
+
+    /** Switch without biometrics. Signing still asks for it. */
+    fun switchWallet(vault: Vault, id: String) {
+        if (id == activeWalletId || address == null) return
+        val row = wallets.firstOrNull { it.id == id } ?: return
+        if (row.address.isBlank() || !vault.exists(id)) return
+        vault.activeId = id
+        showWallet(id, row.address)
+    }
+
+    private fun showWallet(id: String, addr: String) {
+        refreshJob?.cancel()
+        loading = false
+        ensJob?.cancel()
+        ensName = null
+        activeWalletId = id
+        address = addr
+        resetBalances()
+    }
+
+    fun renameWallet(id: String, name: String) {
+        val n = name.trim().take(24)
+        if (n.isNotEmpty()) viewModelScope.launch { walletDao.rename(id, n) }
+    }
+
+    /** Drops the list entry. Vault.delete(id) is done by the caller. */
+    suspend fun forgetWallet(id: String) { walletDao.delete(id) }
+
+    /** Wipe all. */
+    suspend fun wipeWallets() {
+        walletDao.deleteAll()
+        activeWalletId = null
+    }
+
+    // ---- chain, session ----
     fun selectChain(id: Long) {
         if (id == selected?.chainId) return
         selectedId = id
@@ -175,6 +252,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         loading = false
         resetBalances()
         ensName = null
+        addWalletRequest = false
+        deleteWalletRequest = null
     }
 
     private fun resetBalances() {
@@ -280,7 +359,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Re-checks every pending transaction, on whatever chain it was sent. */
+    /** Re-checks every pending transaction, of every wallet, on whatever chain it was sent. */
     fun refreshHistory() {
         viewModelScope.launch {
             historyRefreshing = true

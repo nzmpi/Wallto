@@ -3,6 +3,7 @@ package com.nzm.wallet.ui
 import android.content.ClipboardManager
 import android.os.SystemClock
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +25,7 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.nzm.wallet.chain.WalletRow
 import com.nzm.wallet.crypto.WalletCore
 import com.nzm.wallet.storage.KeystoreVault
 import com.nzm.wallet.storage.SecretType
@@ -34,6 +36,19 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
+
+/** Disconnects every site whose session account is [address]. */
+private fun disconnectSessionsOf(address: String) {
+    runCatching {
+        WcService.sessions.value
+            .filter { s ->
+                s.namespaces.values.any { ns ->
+                    ns.accounts.any { it.substringAfterLast(':').equals(address, ignoreCase = true) }
+                }
+            }
+            .forEach { WcService.disconnect(it.topic) }
+    }
+}
 
 @Composable
 fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
@@ -66,7 +81,8 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
     }
 
     suspend fun unlock() {
-        vault.withCredentials(activity) { creds -> vm.address = WalletCore.addressOf(creds) }
+        val id = vault.activeId ?: error("No wallet")
+        vault.withCredentials(activity, id) { creds -> vm.onUnlocked(vault, id, WalletCore.addressOf(creds)) }
         status = null
     }
 
@@ -77,6 +93,74 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
         confirmWipe = false
         status = null
         unlockTick++
+    }
+
+    fun createWallet() {
+        status = null
+        launchSafe {
+            val m = WalletCore.generateMnemonic()
+            val bytes = m.toByteArray()
+            val id = try { vault.save(activity, SecretType.MNEMONIC, bytes) } finally { bytes.fill(0) }
+            hasWallet = true
+            vm.addWallet(vault, id, WalletCore.addressOf(WalletCore.deriveCredentials(m)))
+            vm.addWalletRequest = false
+            backup = m
+        }
+    }
+
+    fun importWallet() {
+        status = null
+        launchSafe {
+            val pk = WalletCore.normalizePrivateKey(input)
+            val (type, bytes, importedAddress) = when {
+                WalletCore.isValidMnemonic(input) -> Triple(
+                    SecretType.MNEMONIC,
+                    WalletCore.normalize(input).toByteArray(),
+                    WalletCore.addressOf(WalletCore.deriveCredentials(input))
+                )
+                pk != null -> Triple(
+                    SecretType.PRIVATE_KEY,
+                    pk.toByteArray(),
+                    WalletCore.addressOf(WalletCore.credentialsFromPrivateKey(pk))
+                )
+                else -> {
+                    status = "That is not a valid recovery phrase or private key."
+                    return@launchSafe
+                }
+            }
+            if (vm.hasAddress(importedAddress)) {
+                bytes.fill(0)
+                status = "This wallet is already added."
+                return@launchSafe
+            }
+            val id = try { vault.save(activity, type, bytes) } finally { bytes.fill(0) }
+            hasWallet = true
+            vm.addWallet(vault, id, importedAddress)
+            vm.addWalletRequest = false
+            input = ""
+            activity.getSystemService(ClipboardManager::class.java).clearPrimaryClip()
+        }
+    }
+
+    suspend fun deleteWallet(row: WalletRow) {
+        // biometric prompt; throws if canceled or failed, so nothing is deleted
+        val (_, bytes) = vault.load(activity, row.id)
+        bytes.fill(0)
+        disconnectSessionsOf(row.address)
+        vault.delete(row.id)
+        vm.forgetWallet(row.id)
+        if (!vault.exists()) {
+            hasWallet = false
+            backup = null
+            status = null
+            vm.clearHistory()
+            vm.clearSession()
+            return
+        }
+        if (row.id == vm.activeWalletId) {
+            val next = vm.wallets.firstOrNull { it.id != row.id && it.address.isNotBlank() }
+            if (next != null) vm.switchWallet(vault, next.id) else vm.clearSession()
+        }
     }
 
     // auto unlock: once per app launch, and again after each lock
@@ -115,54 +199,32 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
             input = input,
             onInput = { input = it },
             status = status,
-            onCreate = {
-                status = null
-                launchSafe {
-                    val m = WalletCore.generateMnemonic()
-                    val bytes = m.toByteArray()
-                    try { vault.save(activity, SecretType.MNEMONIC, bytes) } finally { bytes.fill(0) }
-                    hasWallet = true
-                    vm.address = WalletCore.addressOf(WalletCore.deriveCredentials(m))
-                    backup = m
-                }
-            },
-            onImport = {
-                status = null
-                launchSafe {
-                    val pk = WalletCore.normalizePrivateKey(input)
-                    val (type, bytes, importedAddress) = when {
-                        WalletCore.isValidMnemonic(input) -> Triple(
-                            SecretType.MNEMONIC,
-                            WalletCore.normalize(input).toByteArray(),
-                            WalletCore.addressOf(WalletCore.deriveCredentials(input))
-                        )
-                        pk != null -> Triple(
-                            SecretType.PRIVATE_KEY,
-                            pk.toByteArray(),
-                            WalletCore.addressOf(WalletCore.credentialsFromPrivateKey(pk))
-                        )
-                        else -> {
-                            status = "That is not a valid recovery phrase or private key."
-                            return@launchSafe
-                        }
-                    }
-                    try { vault.save(activity, type, bytes) } finally { bytes.fill(0) }
-                    hasWallet = true
-                    vm.address = importedAddress
-                    input = ""
-                    activity.getSystemService(ClipboardManager::class.java).clearPrimaryClip()
-                }
-            }
+            onCreate = ::createWallet,
+            onImport = ::importWallet,
+            onCancel = null
         )
         keyLost -> KeyLostScreen {
             vault.delete()
             hasWallet = false
             keyLost = false
             vm.clearSession()
+            scope.launch { vm.wipeWallets() }
             status = null
         }
         addr != null && phrase != null -> BackupScreen(phrase) { backup = null }
         addr == null -> LockedScreen(status) { launchSafe { unlock() } }
+        vm.addWalletRequest -> {
+            val cancel = { vm.addWalletRequest = false; input = ""; status = null }
+            BackHandler(onBack = cancel)
+            OnboardingScreen(
+                input = input,
+                onInput = { input = it },
+                status = status,
+                onCreate = ::createWallet,
+                onImport = ::importWallet,
+                onCancel = cancel
+            )
+        }
         else -> MainShell(
             activity = activity,
             vault = vault,
@@ -180,10 +242,29 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
 
     revealed?.let { (type, secret) -> RevealDialog(type, secret) { revealed = null } }
 
+    vm.deleteWalletRequest?.let { id ->
+        val row = vm.wallets.firstOrNull { it.id == id }
+        if (row == null) {
+            vm.deleteWalletRequest = null
+        } else {
+            ConfirmDialog(
+                title = "Delete ${row.name}?",
+                text = "Removes this wallet from this phone and disconnects its sites. " +
+                        "Without its written phrase or private key it cannot be recovered.\n\n${row.address}",
+                confirmLabel = "Delete",
+                onConfirm = {
+                    vm.deleteWalletRequest = null
+                    launchSafe { deleteWallet(row) }
+                },
+                onDismiss = { vm.deleteWalletRequest = null }
+            )
+        }
+    }
+
     if (confirmWipe) {
         ConfirmDialog(
-            title = "Wipe wallet?",
-            text = "This deletes the wallet from this device. Without your written phrase or private key, it cannot be recovered.",
+            title = "Wipe all wallets?",
+            text = "This deletes every wallet from this device. Without the written phrases or private keys, they cannot be recovered.",
             confirmLabel = "Wipe",
             onConfirm = {
                 confirmWipe = false
@@ -193,6 +274,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                     bytes.fill(0)
                     runCatching { WcService.sessions.value.forEach { WcService.disconnect(it.topic) } }
                     vault.delete()
+                    vm.wipeWallets()
                     hasWallet = false
                     backup = null
                     status = null
@@ -211,20 +293,23 @@ private fun OnboardingScreen(
     onInput: (String) -> Unit,
     status: String?,
     onCreate: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onCancel: (() -> Unit)?
 ) {
+    val adding = onCancel != null
     Column(
         Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
-        Spacer(Modifier.height(48.dp))
-        ScreenTitle("Your wallet")
+        Spacer(Modifier.height(30.dp))
+        ScreenTitle(if (adding) "Add wallet" else "Your wallet")
         Text(
-            "Keys are created on this phone and stay on it.",
+            if (adding) "The new wallet is kept next to your others. Each has its own phrase or key."
+            else "Keys are created on this phone and stay on it.",
             fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(top = 8.dp)
         )
         Spacer(Modifier.height(40.dp))
-        PrimaryButton("Create wallet", onCreate)
+        PrimaryButton(if (adding) "Create new wallet" else "Create wallet", onCreate)
         Spacer(Modifier.height(36.dp))
         Hairline()
         Spacer(Modifier.height(24.dp))
@@ -240,9 +325,14 @@ private fun OnboardingScreen(
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(12.dp))
-        OutlineButton("Import", onImport)
+        PrimaryButton("Import", onImport)
         status?.let {
             Text(it, fontSize = 13.sp, color = Dim.Danger, modifier = Modifier.padding(top = 12.dp))
+        }
+
+        if (adding) {
+            Spacer(Modifier.height(60.dp))
+            OutlineButton("Cancel", onCancel)
         }
     }
 }
@@ -308,12 +398,12 @@ private fun KeyLostScreen(onReset: () -> Unit) {
     ) {
         Text("Wallet key lost", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Text(
-            "Your biometrics changed or the screen lock was removed, so Android deleted the key that protects this wallet. Reset it, then restore from your recovery phrase or private key.",
+            "Your biometrics changed or the screen lock was removed, so Android deleted the key that protects your wallets. Reset, then restore each one from its recovery phrase or private key.",
             fontSize = 15.sp, color = Dim.Mid, textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp)
         )
         Spacer(Modifier.height(28.dp))
-        OutlineButton("Reset wallet on this device", onReset, Modifier.widthIn(max = 320.dp))
+        OutlineButton("Reset wallets on this device", onReset, Modifier.widthIn(max = 320.dp))
     }
 }
 

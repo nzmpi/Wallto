@@ -20,6 +20,7 @@ import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.chain.Contact
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.chain.Token
+import com.nzm.wallet.chain.WalletRow
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.launch
@@ -48,10 +49,11 @@ fun SettingsScreen(
     Crossfade(targetState = page, animationSpec = tween(140), label = "settings") { p ->
         when (p) {
             SettingsPage.Root -> SettingsRoot(vm, onPage, onReveal, onWipe)
+            SettingsPage.Wallets -> WalletsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Chains -> ChainsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Tokens -> TokensPage(activity, vm, address) { onPage(SettingsPage.Root) }
             SettingsPage.Contacts -> ContactsPage(vm) { onPage(SettingsPage.Root) }
-            SettingsPage.Sites -> ConnectedSitesPage(activity) { onPage(SettingsPage.Root) }
+            SettingsPage.Sites -> ConnectedSitesPage(activity, vm) { onPage(SettingsPage.Root) }
         }
     }
 }
@@ -74,6 +76,11 @@ private fun SettingsRoot(
     ) {
         ScreenTitle("Settings")
         Spacer(Modifier.height(28.dp))
+        SectionLabel("Wallets")
+        Spacer(Modifier.height(6.dp))
+        SettingsRow("Manage wallets", "${vm.wallets.size}") { onPage(SettingsPage.Wallets) }
+        Hairline()
+        Spacer(Modifier.height(28.dp))
         SectionLabel("Networks")
         Spacer(Modifier.height(6.dp))
         SettingsRow("Chains", "${vm.chains.size}") { onPage(SettingsPage.Chains) }
@@ -92,7 +99,7 @@ private fun SettingsRoot(
         Spacer(Modifier.height(28.dp))
         SectionLabel("Security")
         Spacer(Modifier.height(6.dp))
-        SettingsRow("Reveal recovery secret", onClick = onReveal)
+        SettingsRow("Reveal recovery secret", vm.activeWallet?.name, onClick = onReveal)
         SettingsRow("Lock after", lockLabel(vm.lockAfterMs)) { lockDialog = true }
         Hairline()
         Spacer(Modifier.height(28.dp))
@@ -109,7 +116,7 @@ private fun SettingsRoot(
         Hairline()
         Spacer(Modifier.height(28.dp))
         Hairline()
-        SettingsRow("Wipe wallet", danger = true, onClick = onWipe)
+        SettingsRow("Wipe all wallets", danger = true, onClick = onWipe)
         Hairline()
         Spacer(Modifier.height(24.dp))
     }
@@ -136,6 +143,71 @@ private fun SettingsRoot(
         )
     }
     if (keyDialog) PriceKeyDialog(vm) { keyDialog = false }
+}
+
+@Composable
+private fun WalletsPage(vm: WalletViewModel, onBack: () -> Unit) {
+    var renaming by remember { mutableStateOf<WalletRow?>(null) }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp).padding(top = 12.dp)
+    ) {
+        PageHeader("Wallets", onBack)
+        Spacer(Modifier.height(20.dp))
+        vm.wallets.forEach { w ->
+            Hairline()
+            Row(
+                Modifier.fillMaxWidth().height(68.dp).clickable { renaming = w },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(w.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(
+                        if (w.address.isBlank()) "Unlock to show address" else shortAddress(w.address),
+                        fontSize = 13.sp, color = Dim.Mid
+                    )
+                }
+                if (w.id == vm.activeWalletId) {
+                    Text("Active", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Dim.Accent)
+                }
+                IconButton(onClick = { vm.deleteWalletRequest = w.id }) {
+                    Icon(Ic.Trash, "Delete ${w.name}", Modifier.size(22.dp), tint = Dim.Mid)
+                }
+            }
+        }
+        if (vm.wallets.isNotEmpty()) Hairline()
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Tap a wallet to rename it. Switch wallets from the menu on the Assets screen. " +
+                    "Contacts and tokens are shared by all wallets.",
+            fontSize = 13.sp, color = Dim.Mid
+        )
+        Spacer(Modifier.height(24.dp))
+        OutlineButton("Add wallet", onClick = { vm.addWalletRequest = true }, icon = Ic.Plus)
+        Spacer(Modifier.height(24.dp))
+    }
+
+    renaming?.let { w -> WalletRenameDialog(w) { name -> if (name != null) vm.renameWallet(w.id, name); renaming = null } }
+}
+
+@Composable
+private fun WalletRenameDialog(wallet: WalletRow, onDone: (String?) -> Unit) {
+    var name by remember { mutableStateOf(wallet.name) }
+    AlertDialog(
+        onDismissRequest = { onDone(null) },
+        title = { Text("Rename wallet") },
+        text = {
+            OutlinedTextField(
+                name, { name = it.take(24) }, label = { Text("Name") },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(enabled = name.isNotBlank(), onClick = { onDone(name) }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Cancel") } }
+    )
 }
 
 @Composable
