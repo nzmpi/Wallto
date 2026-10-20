@@ -1,5 +1,6 @@
 package com.nzm.wallet
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.SystemBarStyle
@@ -26,6 +27,20 @@ class MainActivity : FragmentActivity() {
         // blocks screenshots, screen recording, recents thumbnail
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         val vault = Vault(applicationContext)
+        // only on a real launch: after a rotation or theme change the same intent comes back
+        if (savedInstanceState == null) takeWcLink(intent)
         setContent { WalletTheme { WalletGate(this, vault, vm) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takeWcLink(intent)
+    }
+
+    /** wc: links from sites. Kept until the wallet is unlocked and WalletConnect is ready. */
+    private fun takeWcLink(i: Intent?) {
+        val d = i?.data ?: return
+        if (d.scheme.equals("wc", ignoreCase = true)) vm.pendingWcUri = d.toString()
     }
 }

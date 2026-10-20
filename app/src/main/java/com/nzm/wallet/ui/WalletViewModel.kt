@@ -80,6 +80,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     /** UI sets these. WalletGate shows the add flow / delete confirm. */
     var addWalletRequest by mutableStateOf(false)
     var deleteWalletRequest by mutableStateOf<String?>(null)
+    /** wc: link received from outside the app. Paired once unlocked and WalletConnect is ready. */
+    var pendingWcUri by mutableStateOf<String?>(null)
 
     var chains by mutableStateOf<List<Chain>>(emptyList())
         private set

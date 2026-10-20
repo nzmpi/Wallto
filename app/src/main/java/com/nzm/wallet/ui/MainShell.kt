@@ -66,12 +66,26 @@ fun MainShell(
     var chainMenuOpen by remember { mutableStateOf(false) }
     var walletMenuOpen by remember { mutableStateOf(false) }
     var sendReq by remember { mutableStateOf<SendRequest?>(null) }
+
     // errors from the WalletConnect side appear as a toast, whatever tab you are on
     val wcStatus by WcService.status.collectAsState()
     LaunchedEffect(wcStatus) {
         wcStatus?.let {
             Toast.makeText(activity, it, Toast.LENGTH_LONG).show()
             WcService.clearStatus()
+        }
+    }
+
+    val wcReady by WcService.ready.collectAsState()
+    LaunchedEffect(vm.pendingWcUri, wcReady) {
+        val u = vm.pendingWcUri ?: return@LaunchedEffect
+        if (wcReady) {
+            vm.pendingWcUri = null
+            Toast.makeText(activity, "Connecting…", Toast.LENGTH_SHORT).show()
+            WcService.pair(u)
+        } else if (WcService.projectId(activity) == null) {
+            vm.pendingWcUri = null
+            Toast.makeText(activity, "Add the Reown project ID in Settings → Connected sites first", Toast.LENGTH_LONG).show()
         }
     }
 
