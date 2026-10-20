@@ -66,14 +66,15 @@ interface TokenDao {
 }
 
 @Database(
-    entities = [Chain::class, Token::class, Contact::class, TxRecord::class],
-    version = 4, exportSchema = false
+    entities = [Chain::class, Token::class, Contact::class, TxRecord::class, WalletRow::class],
+    version = 5, exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chainDao(): ChainDao
     abstract fun tokenDao(): TokenDao
     abstract fun contactDao(): ContactDao
     abstract fun activityDao(): ActivityDao
+    abstract fun walletDao(): WalletDao
 
     companion object {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -108,11 +109,20 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             }
         }
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `wallets` (" +
+                            "`id` TEXT NOT NULL, `name` TEXT NOT NULL, `address` TEXT NOT NULL, " +
+                            "`createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+            }
+        }
 
         @Volatile private var instance: AppDatabase? = null
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "wallet.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build().also { instance = it }
         }
     }

@@ -14,9 +14,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -47,8 +49,7 @@ enum class HomeTab(val label: String, val icon: ImageVector) {
     Settings("Settings", Ic.Sliders)
 }
 
-enum class SettingsPage { Root, Chains, Tokens, Contacts, Sites }
-
+enum class SettingsPage { Root, Wallets, Chains, Tokens, Contacts, Sites }
 private data class SendRequest(val token: Token?, val to: String)
 
 @Composable
@@ -62,7 +63,8 @@ fun MainShell(
 ) {
     var tab by rememberSaveable { mutableStateOf(HomeTab.Assets) }
     var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.Root) }
-    var menuOpen by remember { mutableStateOf(false) }
+    var chainMenuOpen by remember { mutableStateOf(false) }
+    var walletMenuOpen by remember { mutableStateOf(false) }
     var sendReq by remember { mutableStateOf<SendRequest?>(null) }
     // errors from the WalletConnect side appear as a toast, whatever tab you are on
     val wcStatus by WcService.status.collectAsState()
@@ -73,12 +75,15 @@ fun MainShell(
         }
     }
 
-    BackHandler(enabled = menuOpen) { menuOpen = false }
-    BackHandler(enabled = !menuOpen && tab == HomeTab.Settings && settingsPage != SettingsPage.Root) {
+    BackHandler(enabled = chainMenuOpen) { chainMenuOpen = false }
+    BackHandler(enabled = walletMenuOpen) { walletMenuOpen = false }
+    BackHandler(
+        enabled = !chainMenuOpen && !walletMenuOpen && tab == HomeTab.Settings && settingsPage != SettingsPage.Root
+    ) {
         settingsPage = SettingsPage.Root
     }
     BackHandler(
-        enabled = !menuOpen && tab != HomeTab.Assets &&
+        enabled = !chainMenuOpen && !walletMenuOpen && tab != HomeTab.Assets &&
                 !(tab == HomeTab.Settings && settingsPage != SettingsPage.Root)
     ) { tab = HomeTab.Assets }
 
@@ -106,18 +111,22 @@ fun MainShell(
             contentColor = Dim.Ink,
             bottomBar = {
                 NavBar(tab) { t ->
-                    if (t == HomeTab.Connect) scan() else { tab = t; menuOpen = false }
+                    if (t == HomeTab.Connect) scan() else { tab = t; chainMenuOpen = false; walletMenuOpen = false }
                 }
             }
         ) { pad ->
             Box(Modifier.padding(pad)) {
                 Crossfade(targetState = tab, animationSpec = tween(150), label = "tab") { t ->
                     when (t) {
-                        HomeTab.Assets -> AssetsScreen(activity,
-                            vm, address, onSend = { sendReq = SendRequest(it, "") }) { menuOpen = true }
+                        HomeTab.Assets -> AssetsScreen(
+                            activity, vm, address,
+                            onSend = { sendReq = SendRequest(it, "") },
+                            onWalletMenu = { chainMenuOpen = false; walletMenuOpen = true },
+                            onChainMenu = { walletMenuOpen = false; chainMenuOpen = true }
+                        )
                         HomeTab.Activity -> ActivityScreen(activity, vm, address)
                         HomeTab.Connect -> Unit // an action, not a tab
-                        HomeTab.Contracts -> ContractsScreen(activity, vault, vm, address) { menuOpen = true }
+                        HomeTab.Contracts -> ContractsScreen(activity, vault, vm, address) { chainMenuOpen = true }
                         HomeTab.Settings -> SettingsScreen(
                             activity, vm, address, settingsPage,
                             onPage = { settingsPage = it },
@@ -130,10 +139,17 @@ fun MainShell(
         }
         ChainMenuOverlay(
             vm = vm,
-            open = menuOpen,
-            onDismiss = { menuOpen = false },
-            onSelect = { vm.selectChain(it); menuOpen = false },
-            onManage = { tab = HomeTab.Settings; settingsPage = SettingsPage.Chains; menuOpen = false }
+            open = chainMenuOpen,
+            onDismiss = { chainMenuOpen = false },
+            onSelect = { vm.selectChain(it); chainMenuOpen = false },
+            onManage = { tab = HomeTab.Settings; settingsPage = SettingsPage.Chains; chainMenuOpen = false }
+        )
+        WalletMenuOverlay(
+            vm = vm,
+            open = walletMenuOpen,
+            onDismiss = { walletMenuOpen = false },
+            onSelect = { vm.switchWallet(vault, it); walletMenuOpen = false },
+            onAdd = { walletMenuOpen = false; vm.addWalletRequest = true }
         )
         WcHost(activity, vault, vm, address)
         sendReq?.let { r ->
@@ -215,6 +231,70 @@ private fun BoxScope.ChainMenuOverlay(
                 Text("Manage chains", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Dim.Accent, modifier = Modifier.weight(1f))
                 Icon(Ic.ChevronRight, null, Modifier.size(16.dp), tint = Dim.Accent)
             }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.WalletMenuOverlay(
+    vm: WalletViewModel,
+    open: Boolean,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    onAdd: () -> Unit
+) {
+    AnimatedVisibility(visible = open, enter = fadeIn(tween(140)), exit = fadeOut(tween(100))) {
+        Box(
+            Modifier.fillMaxSize().background(Dim.Scrim).clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss
+            )
+        )
+    }
+    AnimatedVisibility(
+        visible = open,
+        modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 62.dp, start = 20.dp),
+        enter = fadeIn(tween(140)) + scaleIn(tween(160), initialScale = 0.94f, transformOrigin = TransformOrigin(0f, 0f)),
+        exit = fadeOut(tween(100))
+    ) {
+        val shape = RoundedCornerShape(20.dp)
+        Column(
+            Modifier.width(280.dp).clip(shape).background(Dim.Raised).border(1.dp, Dim.MenuLine, shape).padding(6.dp)
+        ) {
+            Column(Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())) {
+                vm.wallets.filter { it.address.isNotBlank() }.forEach { w ->
+                    WalletMenuItem(w.name, w.address, w.id == vm.activeWalletId) { onSelect(w.id) }
+                }
+            }
+            MenuDivider()
+            Row(
+                Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onAdd).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Add wallet", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Dim.Accent, modifier = Modifier.weight(1f))
+                Icon(Ic.Plus, null, Modifier.size(16.dp), tint = Dim.Accent)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WalletMenuItem(name: String, address: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (selected) Dim.RaisedSelected else Color.Transparent)
+            .clickable(onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(shortAddress(address), fontSize = 12.sp, color = Dim.Mid, maxLines = 1)
+        }
+        if (selected) {
+            Spacer(Modifier.width(8.dp))
+            Icon(Ic.Check, "Selected", Modifier.size(18.dp), tint = Dim.Accent)
         }
     }
 }

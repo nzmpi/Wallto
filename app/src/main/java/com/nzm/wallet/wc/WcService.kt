@@ -41,6 +41,7 @@ object WcService {
 
     interface Provider {
         fun chains(): List<Chain>
+        /** Address of the ACTIVE wallet, null while locked. */
         fun address(): String?
         fun switchTo(chain: Chain)
     }
@@ -55,6 +56,16 @@ object WcService {
         prefs(ctx).edit {
             if (id.isNullOrBlank()) remove("project_id") else putString("project_id", id.trim())
         }
+    }
+
+    /** The wallet address a session was approved with (taken from the session's accounts). */
+    fun accountOf(session: Wallet.Model.Session): String? =
+        session.namespaces["eip155"]?.accounts?.firstOrNull()?.substringAfterLast(':')
+
+    fun sessionAddress(topic: String): String? = try {
+        WalletKit.getActiveSessionByTopic(topic)?.let { accountOf(it) }
+    } catch (_: Exception) {
+        null
     }
 
     fun start(app: Application) {
@@ -122,7 +133,7 @@ object WcService {
         )
     }
 
-    /** Shares the address on every chain saved in the wallet. Returns an error text or null. */
+    /** Shares the given wallet address on every chain saved in the wallet. Returns an error text or null. */
     fun approve(item: Proposal, chains: List<Chain>, address: String, done: (String?) -> Unit) {
         try {
             val ids = chains.map { "eip155:${it.chainId}" }
@@ -192,8 +203,11 @@ object WcService {
         val id = r.request.id
         val topic = r.topic
         val p = provider
-        val address = p?.address()
-        if (p == null || address == null) { errorTo(topic, id, 4900, "Wallet unavailable"); return }
+        val active = p?.address()
+        if (p == null || active == null) { errorTo(topic, id, 4900, "Wallet unavailable"); return }
+        // the wallet this site connected with, not necessarily the active one
+        val address = sessionAddress(topic)
+        if (address == null) { errorTo(topic, id, 4900, "No account for this session"); return }
         val cid = try {
             val s = JSONArray(r.request.params).getJSONObject(0).getString("chainId")
             if (s.startsWith("0x")) s.drop(2).toLong(16) else s.toLong()
@@ -205,7 +219,8 @@ object WcService {
         if (chain == null) { errorTo(topic, id, 4902, "Chain not added to this wallet"); return }
 
         val finish = {
-            p.switchTo(chain)
+            // the app's chain only follows sites of the wallet you are looking at
+            if (address.equals(active, ignoreCase = true)) p.switchTo(chain)
             send(topic, Wallet.Model.JsonRpcResponse.JsonRpcResult(id = id, result = "null"))
             WalletKit.emitSessionEvent(
                 Wallet.Params.SessionEmit(
