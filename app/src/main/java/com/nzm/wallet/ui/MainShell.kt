@@ -151,7 +151,7 @@ fun MainShell(
                 }
             }
         }
-        ChainMenuOverlay(
+        SendChainMenu(
             vm = vm,
             open = chainMenuOpen,
             onDismiss = { chainMenuOpen = false },
@@ -204,52 +204,6 @@ private fun NavBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
 }
 
 @Composable
-private fun BoxScope.ChainMenuOverlay(
-    vm: WalletViewModel,
-    open: Boolean,
-    onDismiss: () -> Unit,
-    onSelect: (Long) -> Unit,
-    onManage: () -> Unit
-) {
-    AnimatedVisibility(visible = open, enter = fadeIn(tween(140)), exit = fadeOut(tween(100))) {
-        Box(
-            Modifier.fillMaxSize().background(Dim.Scrim).clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            )
-        )
-    }
-    AnimatedVisibility(
-        visible = open,
-        modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 62.dp, end = 20.dp),
-        enter = fadeIn(tween(140)) + scaleIn(tween(160), initialScale = 0.94f, transformOrigin = TransformOrigin(1f, 0f)),
-        exit = fadeOut(tween(100))
-    ) {
-        val shape = RoundedCornerShape(20.dp)
-        val current = vm.selected?.chainId
-        val mainnets = vm.chains.filter { !it.isTestnet }
-        val testnets = vm.chains.filter { it.isTestnet }
-        Column(
-            Modifier.width(260.dp).clip(shape).background(Dim.Raised).border(1.dp, Dim.MenuLine, shape).padding(6.dp)
-        ) {
-            mainnets.forEach { ChainMenuItem(it, it.chainId == current) { onSelect(it.chainId) } }
-            if (mainnets.isNotEmpty() && testnets.isNotEmpty()) MenuDivider()
-            testnets.forEach { ChainMenuItem(it, it.chainId == current) { onSelect(it.chainId) } }
-            MenuDivider()
-            Row(
-                Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp))
-                    .clickable(onClick = onManage).padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Manage chains", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Dim.Accent, modifier = Modifier.weight(1f))
-                Icon(Ic.ChevronRight, null, Modifier.size(16.dp), tint = Dim.Accent)
-            }
-        }
-    }
-}
-
-@Composable
 private fun BoxScope.WalletMenuOverlay(
     vm: WalletViewModel,
     open: Boolean,
@@ -281,7 +235,7 @@ private fun BoxScope.WalletMenuOverlay(
                     WalletMenuItem(w.name, w.address, w.id == vm.activeWalletId) { onSelect(w.id) }
                 }
             }
-            MenuDivider()
+            MenuLine()
             Row(
                 Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp))
                     .clickable(onClick = onAdd).padding(horizontal = 12.dp),
@@ -311,26 +265,4 @@ private fun WalletMenuItem(name: String, address: String, selected: Boolean, onC
             Icon(Ic.Check, "Selected", Modifier.size(18.dp), tint = Dim.Accent)
         }
     }
-}
-
-@Composable
-private fun ChainMenuItem(chain: Chain, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp))
-            .background(if (selected) Dim.RaisedSelected else Color.Transparent)
-            .clickable(onClick = onClick).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
-        if (chain.isTestnet) Text("testnet", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Dim.Mid)
-        if (selected) {
-            Spacer(Modifier.width(8.dp))
-            Icon(Ic.Check, "Selected", Modifier.size(18.dp), tint = Dim.Accent)
-        }
-    }
-}
-
-@Composable
-private fun MenuDivider() {
-    Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth().height(1.dp).background(Dim.MenuLine))
 }
