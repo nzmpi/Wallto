@@ -6,22 +6,35 @@ import android.content.Intent
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.chain.Rpc
 import com.nzm.wallet.chain.TxRecord
@@ -31,7 +44,6 @@ import java.math.BigInteger
 import java.text.DateFormat
 import java.util.Date
 import kotlin.time.Duration.Companion.milliseconds
-import androidx.core.net.toUri
 
 @Composable
 fun ActivityScreen(activity: FragmentActivity, vm: WalletViewModel, address: String) {
@@ -48,9 +60,8 @@ fun ActivityScreen(activity: FragmentActivity, vm: WalletViewModel, address: Str
         }
     }
 
-    fun who(addr: String) = vm.contacts.firstOrNull { it.address.equals(addr, true) }?.name ?: shortAddress(addr)
     fun chainName(id: Long) = vm.chains.firstOrNull { it.chainId == id }?.name ?: "Chain $id"
-    fun amountOf(r: TxRecord) = Rpc.formatUnits(BigInteger(r.amount), r.decimals, 6) + " " + r.symbol
+    fun amountOf(r: TxRecord) = amountText(r)
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         item {
@@ -77,10 +88,11 @@ fun ActivityScreen(activity: FragmentActivity, vm: WalletViewModel, address: Str
                 "call" -> r.dapp ?: "Contract call"
                 else -> "Sent"
             }
+            val to = rememberParty(vm, r.recipient).main
             val sub = if (r.kind == "call") {
-                (r.note ?: "To ${who(r.recipient)}") + " · " + chainName(r.chainId)
+                (r.note ?: "To $to") + " · " + chainName(r.chainId)
             } else {
-                "To ${who(r.recipient)} · ${chainName(r.chainId)}"
+                "To $to · ${chainName(r.chainId)}"
             }
             Hairline()
             Row(
@@ -98,7 +110,7 @@ fun ActivityScreen(activity: FragmentActivity, vm: WalletViewModel, address: Str
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     if (r.kind != "call" || r.amount != "0") {
-                        Text("−" + amountOf(r), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                        Text("− " + amountOf(r), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                     }
                     when (r.status) {
                         0 -> Text("Pending", fontSize = 13.sp, color = Dim.Accent)
@@ -120,68 +132,89 @@ fun ActivityScreen(activity: FragmentActivity, vm: WalletViewModel, address: Str
     }
 
     open?.let { r ->
-        val chain = vm.chains.firstOrNull { it.chainId == r.chainId }
-        var confirmRemove by remember { mutableStateOf(false) }
-        AlertDialog(
-            onDismissRequest = { open = null },
-            title = { Text(if (r.kind == "call") "Contract call" else "Sent") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DetailRow(
-                        "Status",
-                        when (r.status) { 0 -> "Pending"; 1 -> "Confirmed"; else -> "Failed (reverted)" },
-                        color = if (r.status == 2) Dim.Danger else Dim.Ink
-                    )
-                    DetailRow("Network", chain?.name ?: "Chain ${r.chainId} (not saved)")
-                    DetailRow("Time", DateFormat.getDateTimeInstance().format(Date(r.createdAt)))
-                    if (r.kind != "call" || r.amount != "0") DetailRow("Amount", amountOf(r))
-                    r.dapp?.let { DetailRow("Site", it) }
-                    r.note?.let { DetailRow("Action", it) }
-                    val name = vm.contacts.firstOrNull { it.address.equals(r.recipient, true) }?.name
-                    DetailRow("To" + (name?.let { " · $it" } ?: ""), r.recipient, mono = true)
-                    r.tokenAddress?.let { DetailRow("Token contract", it, mono = true) }
-                    DetailRow("Transaction hash", r.hash, mono = true)
-                    Row {
-                        TextButton(onClick = {
-                            activity.getSystemService(ClipboardManager::class.java)
-                                .setPrimaryClip(ClipData.newPlainText("hash", r.hash))
-                        }) { Text("Copy hash") }
-                        TextButton(onClick = { confirmRemove = true }) { Text("Remove", color = Dim.Danger) }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { open = null }) { Text("Close") } },
-            dismissButton = {
-                if (chain?.explorerUrl != null) {
-                    TextButton(onClick = {
-                        activity.startActivity(
-                            Intent(Intent.ACTION_VIEW, "${chain.explorerUrl}/tx/${r.hash}".toUri())
-                        )
-                    }) { Text("Explorer") }
-                }
-            }
-        )
-        if (confirmRemove) {
-            ConfirmDialog(
-                title = "Remove from history?",
-                text = "Only removes this entry on this phone. The transaction stays on the blockchain.",
-                confirmLabel = "Remove",
-                onConfirm = { vm.removeTx(r.chainId, r.hash); confirmRemove = false; open = null },
-                onDismiss = { confirmRemove = false }
-            )
-        }
+        ActivityDetail(activity, vm, r) { open = null }
     }
 }
 
+private fun amountText(r: TxRecord) = Rpc.formatUnits(BigInteger(r.amount), r.decimals, 6) + " " + r.symbol
+
 @Composable
-private fun DetailRow(label: String, value: String, mono: Boolean = false, color: Color = Dim.Ink) {
-    Column {
-        Text(label, fontSize = 13.sp, color = Dim.Mid)
-        Text(
-            value,
-            fontSize = if (mono) 13.sp else 15.sp,
-            fontFamily = if (mono) FontFamily.Monospace else null,
-            color = color
+private fun ActivityDetail(activity: FragmentActivity, vm: WalletViewModel, r: TxRecord, onClose: () -> Unit) {
+    val chain = vm.chains.firstOrNull { it.chainId == r.chainId }
+    var confirmRemove by remember { mutableStateOf(false) }
+    val isCall = r.kind == "call"
+    val hasAmount = !isCall || r.amount != "0"
+
+    TxPage(
+        onDismiss = onClose,
+        bottom = {
+            OutlineButton("Copy hash", {
+                activity.getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("hash", r.hash))
+            }, Modifier.weight(1f))
+            if (chain?.explorerUrl != null) {
+                PrimaryButton("Explorer", {
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, "${chain.explorerUrl}/tx/${r.hash}".toUri()))
+                }, Modifier.weight(1f))
+            } else {
+                PrimaryButton("Close", onClose, Modifier.weight(1f))
+            }
+        }
+    ) {
+        PageHeader(if (isCall) "Contract call" else "Sent", onClose)
+
+        if (isCall && r.dapp != null) {
+            Text(r.dapp, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }
+        if (hasAmount) TxAmount(if (isCall) "Also sent" else "Sent", amountText(r))
+        else TxAmount("Called", r.note ?: "Contract call")
+
+        TxCard {
+            TxPartyRow("From", rememberParty(vm, r.sender))
+            TxLine()
+            TxPartyRow(if (isCall) "Contract" else "To", rememberParty(vm, r.recipient))
+        }
+
+        TxCard {
+            TxRow(
+                "Status",
+                when (r.status) { 0 -> "Pending"; 1 -> "Confirmed"; else -> "Failed (reverted)" },
+                when (r.status) { 0 -> Dim.Accent; 1 -> TxOk; else -> Dim.Danger }
+            )
+            TxLine()
+            TxRow("Network", chain?.name ?: "Chain ${r.chainId} (not saved)")
+            TxLine()
+            TxRow("Time", DateFormat.getDateTimeInstance().format(Date(r.createdAt)))
+            if (isCall && hasAmount && r.note != null) {
+                TxLine()
+                TxRow("Action", r.note)
+            }
+        }
+
+        TxAdvanced {
+            r.tokenAddress?.let {
+                TxLabel("Token contract", top = 0)
+                TxMono(it)
+            }
+            TxLabel("Transaction hash", top = if (r.tokenAddress != null) 12 else 0)
+            TxMono(r.hash)
+        }
+
+        TxCard(Modifier.clickable { confirmRemove = true }) {
+            Text(
+                "Remove from history", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), textAlign = TextAlign.Center
+            )
+        }
+    }
+
+    if (confirmRemove) {
+        ConfirmDialog(
+            title = "Remove from history?",
+            text = "Only removes this entry on this phone. The transaction stays on the blockchain.",
+            confirmLabel = "Remove",
+            onConfirm = { vm.removeTx(r.chainId, r.hash); confirmRemove = false; onClose() },
+            onDismiss = { confirmRemove = false }
         )
     }
 }
