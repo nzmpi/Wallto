@@ -321,7 +321,7 @@ private fun OnboardingScreen(
             label = { Text("Recovery phrase or private key") },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(20.dp),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(12.dp))

@@ -71,8 +71,11 @@ private fun SettingsRoot(
     val chain = vm.selected
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp).padding(top = 12.dp)
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp)
     ) {
         ScreenTitle("Settings")
         Spacer(Modifier.height(28.dp))
@@ -84,7 +87,11 @@ private fun SettingsRoot(
         SectionLabel("Networks")
         Spacer(Modifier.height(6.dp))
         SettingsRow("Chains", "${vm.chains.size}") { onPage(SettingsPage.Chains) }
-        SettingsRow("Tokens", chain?.let { "${vm.tokens.size} on ${it.name}" }) { onPage(SettingsPage.Tokens) }
+        SettingsRow("Tokens", chain?.let { "${vm.tokens.size} on ${it.name}" }) {
+            onPage(
+                SettingsPage.Tokens
+            )
+        }
         Hairline()
         Spacer(Modifier.height(28.dp))
         SectionLabel("Address book")
@@ -128,7 +135,10 @@ private fun SettingsRoot(
                 Column {
                     LOCK_OPTIONS.forEach { (ms, label) ->
                         Row(
-                            Modifier.fillMaxWidth().height(48.dp).clickable { vm.setLockAfter(ms); lockDialog = false },
+                            Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clickable { vm.setLockAfter(ms); lockDialog = false },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(selected = ms == vm.lockAfterMs, onClick = null)
@@ -150,15 +160,21 @@ private fun WalletsPage(vm: WalletViewModel, onBack: () -> Unit) {
     var renaming by remember { mutableStateOf<WalletRow?>(null) }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp).padding(top = 12.dp)
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp)
     ) {
         PageHeader("Wallets", onBack)
         Spacer(Modifier.height(20.dp))
         vm.wallets.forEach { w ->
             Hairline()
             Row(
-                Modifier.fillMaxWidth().height(68.dp).clickable { renaming = w },
+                Modifier
+                    .fillMaxWidth()
+                    .height(68.dp)
+                    .clickable { renaming = w },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
@@ -169,7 +185,12 @@ private fun WalletsPage(vm: WalletViewModel, onBack: () -> Unit) {
                     )
                 }
                 if (w.id == vm.activeWalletId) {
-                    Text("Active", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Dim.Accent)
+                    Text(
+                        "Active",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Dim.Accent
+                    )
                 }
                 IconButton(onClick = { vm.deleteWalletRequest = w.id }) {
                     Icon(Ic.Trash, "Delete ${w.name}", Modifier.size(22.dp), tint = Dim.Mid)
@@ -188,7 +209,14 @@ private fun WalletsPage(vm: WalletViewModel, onBack: () -> Unit) {
         Spacer(Modifier.height(24.dp))
     }
 
-    renaming?.let { w -> WalletRenameDialog(w) { name -> if (name != null) vm.renameWallet(w.id, name); renaming = null } }
+    renaming?.let { w ->
+        WalletRenameDialog(w) { name ->
+            if (name != null) vm.renameWallet(
+                w.id,
+                name
+            ); renaming = null
+        }
+    }
 }
 
 @Composable
@@ -218,15 +246,21 @@ private fun ChainsPage(vm: WalletViewModel, onBack: () -> Unit) {
     var removing by remember { mutableStateOf<Chain?>(null) }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp).padding(top = 12.dp)
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp)
     ) {
         PageHeader("Chains", onBack)
         Spacer(Modifier.height(20.dp))
         vm.chains.forEach { c ->
             Hairline()
             Row(
-                Modifier.fillMaxWidth().height(68.dp).clickable { editing = c },
+                Modifier
+                    .fillMaxWidth()
+                    .height(68.dp)
+                    .clickable { editing = c },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
@@ -272,7 +306,12 @@ private fun ChainsPage(vm: WalletViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun TokensPage(activity: FragmentActivity, vm: WalletViewModel, address: String, onBack: () -> Unit) {
+private fun TokensPage(
+    activity: FragmentActivity,
+    vm: WalletViewModel,
+    address: String,
+    onBack: () -> Unit
+) {
     val scope = rememberCoroutineScope()
     val chain = vm.selected
     var adding by remember { mutableStateOf(false) }
@@ -280,8 +319,11 @@ private fun TokensPage(activity: FragmentActivity, vm: WalletViewModel, address:
     var removing by remember { mutableStateOf<Token?>(null) }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp).padding(top = 12.dp)
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp)
     ) {
         PageHeader(if (chain != null) "Tokens on ${chain.name}" else "Tokens", onBack)
         Spacer(Modifier.height(20.dp))
@@ -291,7 +333,10 @@ private fun TokensPage(activity: FragmentActivity, vm: WalletViewModel, address:
         vm.tokens.forEach { t ->
             Hairline()
             Row(
-                Modifier.fillMaxWidth().height(68.dp).clickable { info = t },
+                Modifier
+                    .fillMaxWidth()
+                    .height(68.dp)
+                    .clickable { info = t },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
@@ -343,18 +388,25 @@ private fun PriceKeyDialog(vm: WalletViewModel, onClose: () -> Unit) {
                     label = { Text(if (vm.priceKeySet) "New key" else "API key") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         },
         confirmButton = {
-            TextButton(enabled = text.isNotBlank(), onClick = { vm.setPriceKey(text); onClose() }) { Text("Save") }
+            TextButton(
+                enabled = text.isNotBlank(),
+                onClick = { vm.setPriceKey(text); onClose() }) { Text("Save") }
         },
         dismissButton = {
             Row {
                 if (vm.priceKeySet) {
-                    TextButton(onClick = { vm.setPriceKey(null); onClose() }) { Text("Remove", color = Dim.Danger) }
+                    TextButton(onClick = { vm.setPriceKey(null); onClose() }) {
+                        Text(
+                            "Remove",
+                            color = Dim.Danger
+                        )
+                    }
                 }
                 TextButton(onClick = onClose) { Text("Cancel") }
             }
@@ -369,19 +421,29 @@ private fun ContactsPage(vm: WalletViewModel, onBack: () -> Unit) {
     var removing by remember { mutableStateOf<Contact?>(null) }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp).padding(top = 12.dp)
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp)
     ) {
         PageHeader("Contacts", onBack)
         Spacer(Modifier.height(20.dp))
         if (vm.contacts.isEmpty()) {
-            Text("No contacts yet. Save one from the Send screen, or add one here.", fontSize = 15.sp, color = Dim.Mid)
+            Text(
+                "No contacts yet. Save one from the Send screen, or add one here.",
+                fontSize = 15.sp,
+                color = Dim.Mid
+            )
             Spacer(Modifier.height(16.dp))
         }
         vm.contacts.forEach { c ->
             Hairline()
             Row(
-                Modifier.fillMaxWidth().height(68.dp).clickable { editing = c },
+                Modifier
+                    .fillMaxWidth()
+                    .height(68.dp)
+                    .clickable { editing = c },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
@@ -428,11 +490,13 @@ private fun ContactEditDialog(vm: WalletViewModel, existing: Contact?, onClose: 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     name, { name = it.take(32) }, label = { Text("Name") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp)
                 )
                 OutlinedTextField(
                     address, { address = it.trim() }, label = { Text("Address") },
-                    enabled = existing == null, modifier = Modifier.fillMaxWidth()
+                    enabled = existing == null, modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp)
                 )
                 error?.let { Text(it, color = Dim.Danger) }
             }

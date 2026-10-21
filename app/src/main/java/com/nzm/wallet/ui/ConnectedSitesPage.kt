@@ -4,6 +4,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,8 +28,11 @@ fun ConnectedSitesPage(activity: FragmentActivity, vm: WalletViewModel, onBack: 
     LaunchedEffect(ready) { if (ready) WcService.refreshSessions() }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 24.dp)
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp, bottom = 24.dp)
     ) {
         PageHeader("Connected sites", onBack)
         Spacer(Modifier.height(20.dp))
@@ -50,9 +54,12 @@ fun ConnectedSitesPage(activity: FragmentActivity, vm: WalletViewModel, onBack: 
             Spacer(Modifier.height(16.dp))
             OutlineButton("Paste link", icon = Ic.Copy, onClick = {
                 val cm = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+                val text =
+                    cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
                 if (text.isNullOrBlank()) pasteError = "Clipboard is empty"
-                else { pasteError = null; WcService.pair(text) }
+                else {
+                    pasteError = null; WcService.pair(text)
+                }
             })
             pasteError?.let {
                 Spacer(Modifier.height(10.dp))
@@ -75,7 +82,12 @@ fun ConnectedSitesPage(activity: FragmentActivity, vm: WalletViewModel, onBack: 
                 SettingsRow(
                     label = s.metaData?.name?.ifBlank { null } ?: "Unknown site",
                     value = if (vm.wallets.size > 1)
-                        vm.wallets.firstOrNull { it.address.equals(WcService.accountOf(s), true) }?.name ?: "Removed wallet"
+                        vm.wallets.firstOrNull {
+                            it.address.equals(
+                                WcService.accountOf(s),
+                                true
+                            )
+                        }?.name ?: "Removed wallet"
                     else s.metaData?.url?.removePrefix("https://")?.take(28)
                 ) { toDisconnect = s.topic }
             }
@@ -110,7 +122,8 @@ fun ConnectedSitesPage(activity: FragmentActivity, vm: WalletViewModel, onBack: 
                         value = text, onValueChange = { text = it }, singleLine = true,
                         label = { Text("Project ID") },
                         visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp)
                     )
                 }
             },
