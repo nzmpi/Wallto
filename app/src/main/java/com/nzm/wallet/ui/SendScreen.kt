@@ -16,7 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -70,6 +70,10 @@ fun SendScreen(
     var resolving by remember { mutableStateOf(false) }
     var ensError by remember { mutableStateOf<String?>(null) }
     var plan by remember { mutableStateOf<TxPlan?>(null) }
+    var basePlan by remember { mutableStateOf<TxPlan?>(null) }   // as built, for Reset
+    var feeEdit by remember { mutableStateOf(false) }
+    var nonceEdit by remember { mutableStateOf(false) }
+    var advanced by remember { mutableStateOf(false) }
     var hash by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf("Pending...") }
     var busy by remember { mutableStateOf(false) }
@@ -184,7 +188,7 @@ fun SendScreen(
                 require(SendTx.isValidAddress(dest)) { "Invalid recipient address or checksum" }
                 require(!dest.equals(SEND_ZERO, ignoreCase = true)) { "Recipient is the zero address" }
                 val units = SendTx.parseAmount(amount, decimals)
-                plan = if (token == null) {
+                val built = if (token == null) {
                     SendTx.plan(chain, from, dest, units)
                 } else {
                     require(!dest.equals(token.address, ignoreCase = true)) {
@@ -199,6 +203,9 @@ fun SendScreen(
                         Erc20.encodeTransfer(dest, units), dest, token, units
                     )
                 }
+                basePlan = built
+                advanced = false
+                plan = built
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -241,8 +248,8 @@ fun SendScreen(
             Column(
                 Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 20.dp)
             ) {
-                // header
-                Row(
+                // header (input page only; review and status use PageHeader)
+                if (h == null && p == null) Row(
                     Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -250,16 +257,14 @@ fun SendScreen(
                     IconButton(onClick = { requestClose() }, modifier = Modifier.offset(x = (-12).dp)) {
                         Icon(Ic.ChevronLeft, "Back", Modifier.size(24.dp))
                     }
-                    if (h == null && p == null) {
-                        Box {
-                            ChainChip(chain.name) { if (!busy) chainMenu = true }
-                            DropdownMenu(expanded = chainMenu, onDismissRequest = { chainMenu = false }) {
-                                vm.chains.forEach { c ->
-                                    DropdownMenuItem(
-                                        text = { Text(c.name + if (c.isTestnet) "  (testnet)" else "") },
-                                        onClick = { vm.selectChain(c.chainId); chainMenu = false }
-                                    )
-                                }
+                    Box {
+                        ChainChip(chain.name) { if (!busy) chainMenu = true }
+                        DropdownMenu(expanded = chainMenu, onDismissRequest = { chainMenu = false }) {
+                            vm.chains.forEach { c ->
+                                DropdownMenuItem(
+                                    text = { Text(c.name + if (c.isTestnet) "  (testnet)" else "") },
+                                    onClick = { vm.selectChain(c.chainId); chainMenu = false }
+                                )
                             }
                         }
                     }
@@ -268,11 +273,43 @@ fun SendScreen(
                 when {
                     // ---------- status ----------
                     h != null -> {
-                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                            Spacer(Modifier.height(16.dp))
-                            ScreenTitle("Sent")
-                            Field("Status", result)
-                            Field("Transaction hash", h, mono = true)
+                        Column(
+                            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            PageHeader("Sent") { requestClose() }
+                            if (p != null) {
+                                val tk = p.token
+                                val ta = p.tokenAmount
+                                if (tk != null && ta != null) {
+                                    AmountBlock("Sent", fmt(ta, tk.decimals, tk.symbol), vm.fiat(tk, ta))
+                                } else {
+                                    AmountBlock("Sent", fmtNative(p.value), vm.fiat(null, p.value))
+                                }
+                                val dest = p.recipient ?: p.to
+                                TxCard {
+                                    TxPartyRow("From", rememberParty(vm, p.from))
+                                    TxLine()
+                                    TxPartyRow("To", if (resolved != null) Party(to.trim(), shortAddress(dest)) else rememberParty(vm, dest))
+                                }
+                            }
+                            TxCard {
+                                Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Status", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                                    Text(
+                                        result, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                                        color = when {
+                                            result == "Confirmed" -> TxOk
+                                            result.startsWith("FAILED") -> Dim.Danger
+                                            else -> Dim.Ink
+                                        }
+                                    )
+                                }
+                                TxLine()
+                                Text("Transaction hash", fontSize = 14.sp, color = Dim.Mid, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
+                                TxMono(h)
+                                Spacer(Modifier.height(4.dp))
+                            }
                         }
                         if (chain.explorerUrl != null) {
                             OutlineButton("View on explorer", onClick = {
@@ -288,40 +325,117 @@ fun SendScreen(
 
                     // ---------- review ----------
                     p != null -> {
-                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                            Spacer(Modifier.height(16.dp))
-                            ScreenTitle("Review")
-                            Spacer(Modifier.height(8.dp))
-                            if (chain.isTestnet) Field("Network", "${chain.name} (testnet)")
-                            else Field("Network", "REAL FUNDS on ${chain.name}", color = Dim.Danger)
-                            Field("From", p.from, mono = true)
-                            val dest = p.recipient ?: p.to
-                            val contact = vm.contacts.firstOrNull { it.address.equals(dest, true) }
-                            Field("To" + (contact?.let { " · ${it.name}" } ?: ""), dest, mono = true)
-                            if (resolved != null) {
-                                Field("ENS name", to.trim())
-                                if (chain.chainId != 1L) {
-                                    Text(
-                                        "Resolved on Ethereum. Make sure you control this address on ${chain.name}. " +
-                                                "Contract wallets (like Safe) may not exist at the same address on other chains.",
-                                        fontSize = 14.sp, color = Dim.Danger
-                                    )
+                        val base = basePlan
+                        val dest = p.recipient ?: p.to
+                        Column(
+                            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            PageHeader("Review") { requestClose() }
+                            val tk = p.token
+                            val ta = p.tokenAmount
+                            if (tk != null && ta != null) {
+                                AmountBlock("Sending", fmt(ta, tk.decimals, tk.symbol), vm.fiat(tk, ta))
+                            } else {
+                                AmountBlock("Sending", fmtNative(p.value), vm.fiat(null, p.value))
+                            }
+
+                            // from / to: ENS name, then your name, then short address
+                            TxCard {
+                                TxPartyRow("From", rememberParty(vm, p.from))
+                                TxLine()
+                                TxPartyRow("To", if (resolved != null) Party(to.trim(), shortAddress(dest)) else rememberParty(vm, dest))
+                            }
+                            if (resolved != null && chain.chainId != 1L) {
+                                Text(
+                                    "Resolved on Ethereum. Make sure you control this address on ${chain.name}. " +
+                                            "Contract wallets (like Safe) may not exist at the same address on other chains.",
+                                    fontSize = 14.sp, color = Dim.Danger
+                                )
+                            }
+
+                            // network
+                            TxCard {
+                                Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Network", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                                    Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                    if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
                                 }
                             }
-                            if (p.token != null && p.tokenAmount != null) {
-                                Field("Token", "${p.token.symbol} (${p.token.name})")
-                                Field("Token contract", p.token.address, mono = true)
-                                Field("Amount", fmt(p.tokenAmount, p.token.decimals, p.token.symbol))
-                                Field("Max network fee", fmtNative(p.maxFeeWei))
-                            } else {
-                                Field("Amount", fmtNative(p.value))
-                                Field("Max network fee", fmtNative(p.maxFeeWei))
-                                Field("Max total", fmtNative(p.maxTotalWei))
+
+                            // max fee, tap to change
+                            TxCard(Modifier.clickable(enabled = !busy) { feeEdit = true }) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Max fee", fontSize = 15.sp, color = Dim.Mid)
+                                        if (base != null && p.fee != base.fee) Text("Edited", fontSize = 12.sp, color = Dim.Accent)
+                                    }
+                                    val fiat = vm.fiat(null, p.maxFeeWei)
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            fiat ?: fmtNative(p.maxFeeWei),
+                                            fontSize = 16.sp, fontWeight = FontWeight.SemiBold
+                                        )
+                                        if (fiat != null) Text(fmtNative(p.maxFeeWei), fontSize = 12.sp, color = Dim.Mid)
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Icon(Ic.Sliders, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
+                                }
                             }
-                            Text(
-                                "Check the full recipient address, not only the first and last characters.",
-                                fontSize = 13.sp, color = Dim.Mid
-                            )
+
+                            // native sends: amount plus the most the fee can be
+                            if (p.token == null) {
+                                TxCard {
+                                    Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Max total", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(fmtNative(p.maxTotalWei), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // advanced
+                            TxCard(Modifier.clickable { advanced = !advanced }) {
+                                Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Advanced details", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                                    Icon(
+                                        Ic.ChevronDown, null,
+                                        Modifier.size(18.dp).rotate(if (advanced) 180f else 0f), tint = Dim.Mid
+                                    )
+                                }
+                                if (advanced) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable(enabled = !busy) { nonceEdit = true }
+                                            .padding(vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Nonce", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                                        Text(p.nonce.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                        Spacer(Modifier.width(10.dp))
+                                        Icon(Ic.Sliders, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
+                                    }
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                        Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                                        Text(p.gasLimit.toString(), fontSize = 15.sp)
+                                    }
+                                    if (tk != null) {
+                                        Text("Token", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(vertical = 8.dp))
+                                        Text("${tk.symbol} (${tk.name})", fontSize = 14.sp)
+                                        Text("Token contract", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+                                        TxMono(tk.address)
+                                    }
+                                    Text("Recipient", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+                                    TxMono(dest)
+                                    if (resolved != null) {
+                                        Text("ENS name", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+                                        Text(to.trim(), fontSize = 14.sp)
+                                    }
+                                    Text("Data", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+                                    if (p.data.isEmpty()) Text("No data", fontSize = 14.sp) else TxMono(p.data)
+                                }
+                            }
                         }
                         error?.let { Text(it, color = Dim.Danger, fontSize = 14.sp, modifier = Modifier.padding(bottom = 8.dp)) }
                         if (busy) Text("Working…", color = Dim.Mid, modifier = Modifier.padding(bottom = 8.dp))
@@ -525,6 +639,23 @@ fun SendScreen(
         )
     }
 
+    val ep = plan
+    val eb = basePlan
+    if (feeEdit && ep != null && eb != null) {
+        TxFeeDialog(
+            plan = ep, base = eb,
+            onSave = { plan = ep.copy(fee = it); feeEdit = false },
+            onDismiss = { feeEdit = false }
+        )
+    }
+    if (nonceEdit && ep != null) {
+        TxNonceDialog(
+            current = ep.nonce,
+            onSave = { plan = ep.copy(nonce = it); nonceEdit = false },
+            onDismiss = { nonceEdit = false }
+        )
+    }
+
     if (addToken) TokenDialog(chain, vm.tokenRepo) { addToken = false }
 
     if (saveDialog && target != null) {
@@ -560,6 +691,15 @@ fun SendScreen(
 }
 
 @Composable
+private fun AmountBlock(label: String, amount: String, fiat: String?) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Text(label, fontSize = 15.sp, color = Dim.Mid)
+        Text(amount, fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
+        if (fiat != null) Text(fiat, fontSize = 15.sp, color = Dim.Mid)
+    }
+}
+
+@Composable
 private fun SendAvatar(text: String, size: Dp) {
     Box(
         Modifier.size(size).clip(CircleShape).background(Dim.Avatar),
@@ -577,18 +717,5 @@ private fun PctChip(label: String, enabled: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) Dim.Ink else Dim.Mid)
-    }
-}
-
-@Composable
-private fun Field(label: String, value: String, mono: Boolean = false, color: Color = Dim.Ink) {
-    Column(Modifier.padding(vertical = 8.dp)) {
-        Text(label, fontSize = 13.sp, color = Dim.Mid)
-        Text(
-            value,
-            fontSize = if (mono) 14.sp else 16.sp,
-            fontFamily = if (mono) FontFamily.Monospace else null,
-            color = color
-        )
     }
 }
