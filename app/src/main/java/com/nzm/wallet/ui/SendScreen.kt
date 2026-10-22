@@ -282,7 +282,7 @@ fun SendScreen(
                         ) {
                             Icon(Ic.ChevronLeft, "Back", Modifier.size(24.dp))
                         }
-                        ChainChip(chain.name) { if (!busy) chainMenu = true }
+                        ChainChip(chain) { if (!busy) chainMenu = true }
                     }
 
                     when {
@@ -692,7 +692,7 @@ fun SendScreen(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
-                                            SendAvatar(symbol.take(1).uppercase(), 44.dp)
+                                            AssetIcon(chain, token, 44.dp, symbol.take(1).uppercase())
                                             Column {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,

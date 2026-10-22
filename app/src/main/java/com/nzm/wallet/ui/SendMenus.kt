@@ -47,7 +47,7 @@ private fun MenuScrim(open: Boolean, onDismiss: () -> Unit) {
 @Composable
 private fun MenuItem(
     title: String, selected: Boolean, trailing: String? = null,
-    color: Color = Dim.Ink, onClick: () -> Unit
+    color: Color = Dim.Ink, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit
 ) {
     Row(
         Modifier
@@ -59,6 +59,9 @@ private fun MenuItem(
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (leading != null) {
+            leading(); Spacer(Modifier.width(5.dp))
+        }
         Text(
             title,
             fontSize = 15.sp,
@@ -121,14 +124,19 @@ fun BoxScope.SendChainMenu(
                 .verticalScroll(rememberScrollState())
                 .padding(6.dp)
         ) {
-            mainnets.forEach { MenuItem(it.name, it.chainId == current) { onSelect(it.chainId) } }
+            mainnets.forEach {
+                MenuItem(
+                    it.name,
+                    it.chainId == current,
+                    leading = { ChainIcon(it, 28.dp) }) { onSelect(it.chainId) }
+            }
             if (mainnets.isNotEmpty() && testnets.isNotEmpty()) MenuLine()
             testnets.forEach {
                 MenuItem(
                     it.name,
                     it.chainId == current,
-                    "testnet"
-                ) { onSelect(it.chainId) }
+                    "testnet",
+                    leading = { ChainIcon(it, 28.dp) }) { onSelect(it.chainId) }
             }
             if (onManage != null) {
                 MenuLine()
@@ -192,20 +200,30 @@ fun BoxScope.SendTokenMenu(
                 .padding(6.dp)
         ) {
             MenuItem(
-                chain.symbol,
-                tokenAddr == null,
-                vm.amountText(vm.nativeBalance, chain.decimals)
-            ) { onPick(null) }
+                chain.symbol, tokenAddr == null, vm.amountText(vm.nativeBalance, chain.decimals),
+                leading = {
+                    AssetIcon(
+                        chain,
+                        null,
+                        28.dp,
+                        chain.symbol.take(1).uppercase()
+                    )
+                }) { onPick(null) }
             vm.tokens
                 .filter { it.address == tokenAddr || vm.tokenBalances[it.address]?.signum() != 0 }
                 .forEach { t ->
                     MenuItem(
                         t.symbol,
                         t.address == tokenAddr,
-                        vm.amountText(vm.tokenBalances[t.address], t.decimals)
-                    ) {
-                        onPick(t.address)
-                    }
+                        vm.amountText(vm.tokenBalances[t.address], t.decimals),
+                        leading = {
+                            AssetIcon(
+                                chain,
+                                t,
+                                28.dp,
+                                t.symbol.take(1).uppercase()
+                            )
+                        }) { onPick(t.address) }
                 }
             MenuLine()
             MenuItem("Add token…", false, color = Dim.Accent, onClick = onAdd)

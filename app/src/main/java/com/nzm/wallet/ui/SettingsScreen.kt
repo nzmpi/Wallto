@@ -263,6 +263,8 @@ private fun ChainsPage(vm: WalletViewModel, onBack: () -> Unit) {
                     .clickable { editing = c },
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                ChainIcon(c, 28.dp)
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(c.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text(
@@ -298,6 +300,7 @@ private fun ChainsPage(vm: WalletViewModel, onBack: () -> Unit) {
             confirmLabel = "Remove",
             onConfirm = {
                 scope.launch { vm.chainRepo.remove(c.chainId) }
+                IconStore.forgetChain(c.chainId)
                 removing = null
             },
             onDismiss = { removing = null }
@@ -339,6 +342,8 @@ private fun TokensPage(
                     .clickable { info = t },
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                AssetIcon(chain, t, 28.dp, t.symbol.take(1).uppercase())
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(t.symbol, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text(shortAddress(t.address), fontSize = 13.sp, color = Dim.Mid)
@@ -365,6 +370,7 @@ private fun TokensPage(
             confirmLabel = "Remove",
             onConfirm = {
                 scope.launch { vm.tokenRepo.remove(t.chainId, t.address) }
+                IconStore.forgetToken(t.chainId, t.address)
                 removing = null
             },
             onDismiss = { removing = null }

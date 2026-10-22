@@ -44,7 +44,7 @@ fun ContractsScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 24.dp)
     ) {
-        TabHeader("Contracts", chain?.name, onChainMenu)
+        TabHeader("Contracts", chain, onChainMenu)
         Spacer(Modifier.height(28.dp))
         PrimaryButton("New call", onClick = { session = CallSession(null) }, icon = Ic.Plus, enabled = chain != null)
         Spacer(Modifier.height(36.dp))
