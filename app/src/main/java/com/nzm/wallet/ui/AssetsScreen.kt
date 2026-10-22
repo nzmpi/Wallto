@@ -51,7 +51,7 @@ fun AssetsScreen(
                     WalletChip(vm.walletLabel(address), onWalletMenu)
                     CopyAddressButton(address)
                 }
-                ChainChip(chain.name, onChainMenu)
+                ChainChip(chain, onChainMenu)
             }
         }
         item {
@@ -96,6 +96,7 @@ fun AssetsScreen(
         item(key = "native") {
             AssetRow(
                 initial = chain.symbol.take(1).uppercase(),
+                icon = { AssetIcon(chain, null, 40.dp, chain.symbol.take(1).uppercase()) },
                 title = chain.symbol,
                 subtitle = chain.name,
                 amount = vm.amountText(vm.nativeBalance, chain.decimals),
@@ -108,6 +109,7 @@ fun AssetsScreen(
             val raw = vm.tokenBalances[t.address]
             AssetRow(
                 initial = t.symbol.take(1).uppercase(),
+                icon = { AssetIcon(chain, t, 40.dp, t.symbol.take(1).uppercase()) },
                 title = t.symbol,
                 subtitle = t.name,
                 amount = if (known) vm.amountText(raw, t.decimals) else "…",

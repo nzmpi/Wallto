@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.ui.theme.Dim
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
@@ -56,14 +57,16 @@ fun SectionLabel(text: String) {
 }
 
 @Composable
-fun TabHeader(title: String, chainName: String?, onChainMenu: () -> Unit) {
+fun TabHeader(title: String, chain: Chain?, onChainMenu: () -> Unit) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         ScreenTitle(title)
-        if (chainName != null) ChainChip(chainName, onChainMenu)
+        if (chain != null) {
+            ChainChip(chain, onChainMenu)
+        }
     }
 }
 
@@ -128,7 +131,7 @@ fun OutlineButton(
 }
 
 @Composable
-fun ChainChip(name: String, onClick: () -> Unit) {
+fun ChainChip(chain: Chain, onClick: () -> Unit) {
     Row(
         Modifier
             .height(44.dp)
@@ -138,7 +141,8 @@ fun ChainChip(name: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        ChainIcon(chain, 28.dp)
+        Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Icon(Ic.ChevronDown, null, Modifier.size(16.dp))
     }
 }
@@ -220,6 +224,7 @@ fun RefreshButton(spinning: Boolean, onClick: () -> Unit) {
 @Composable
 fun AssetRow(
     initial: String,
+    icon: (@Composable () -> Unit)? = null,
     title: String,
     subtitle: String,
     amount: String,
@@ -235,16 +240,18 @@ fun AssetRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Box(
-                Modifier.size(40.dp).clip(CircleShape).background(if (native) Dim.Ink else Dim.Avatar),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    initial,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (native) Dim.OnAccent else Dim.Ink
-                )
+            if (icon != null) icon() else {
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(if (native) Dim.Ink else Dim.Avatar),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        initial,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (native) Dim.OnAccent else Dim.Ink
+                    )
+                }
             }
             Column(Modifier.weight(1f)) {
                 Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

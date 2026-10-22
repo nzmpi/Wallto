@@ -2,6 +2,7 @@ package com.nzm.wallet.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -31,16 +32,47 @@ fun ChainDialog(repo: ChainRepository, existing: Chain?, onDone: (Chain?) -> Uni
         onDismissRequest = { if (!busy) onDone(null) },
         title = { Text(if (existing == null) "Add EVM chain" else "Edit chain") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
-                OutlinedTextField(rpc, { rpc = it }, label = { Text("RPC URL (https)") }, singleLine = true)
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedTextField(
-                    id, { id = it }, label = { Text("Chain ID") }, singleLine = true,
+                    name,
+                    { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(20.dp)
+                )
+                OutlinedTextField(
+                    rpc,
+                    { rpc = it },
+                    label = { Text("RPC URL (https)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(20.dp)
+                )
+                OutlinedTextField(
+                    id,
+                    { id = it },
+                    label = { Text("Chain ID") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(20.dp),
                     enabled = existing == null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
-                OutlinedTextField(symbol, { symbol = it }, label = { Text("Currency symbol") }, singleLine = true)
-                OutlinedTextField(explorer, { explorer = it }, label = { Text("Explorer URL (optional)") }, singleLine = true)
+                OutlinedTextField(
+                    symbol,
+                    { symbol = it },
+                    label = { Text("Currency symbol") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(20.dp)
+                )
+                OutlinedTextField(
+                    explorer,
+                    { explorer = it },
+                    label = { Text("Explorer URL (optional)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(20.dp)
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(testnet, { testnet = it })
                     Text("Testnet")
@@ -65,6 +97,10 @@ fun ChainDialog(repo: ChainRepository, existing: Chain?, onDone: (Chain?) -> Uni
                 }
             }) { Text(if (existing == null) "Add" else "Save") }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = { onDone(null) }) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = { onDone(null) }) { Text("Cancel") }
+        }
     )
 }

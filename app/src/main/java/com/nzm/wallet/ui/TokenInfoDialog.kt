@@ -3,22 +3,24 @@ package com.nzm.wallet.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.chain.Erc20
 import com.nzm.wallet.chain.Rpc
 import com.nzm.wallet.chain.Token
+import com.nzm.wallet.ui.theme.Dim
 import kotlinx.coroutines.CancellationException
 import java.math.BigInteger
-import androidx.core.net.toUri
 
 @Composable
 fun TokenInfoDialog(
@@ -31,6 +33,7 @@ fun TokenInfoDialog(
 ) {
     var raw by remember { mutableStateOf<BigInteger?>(null) }
     var balanceError by remember { mutableStateOf<String?>(null) }
+    var copied by remember { mutableStateOf(false) }
 
     LaunchedEffect(token.address) {
         try {
@@ -42,49 +45,65 @@ fun TokenInfoDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text(token.symbol) },
-        text = {
-            SelectionContainer {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Name: ${token.name}")
-                    Text("Symbol: ${token.symbol}")
-                    Text("Decimals: ${token.decimals}")
-                    val r = raw
-                    when {
-                        r != null -> {
-                            Text("Balance: ${Rpc.formatUnits(r, token.decimals, token.decimals)} ${token.symbol}")
-                            Text("Raw units: $r")
-                        }
-                        balanceError != null ->
-                            Text("Balance: error: $balanceError", color = MaterialTheme.colorScheme.error)
-                        else -> Text("Balance: loading...")
-                    }
-                    Text("Network: ${chain.name} (chain ID ${token.chainId})")
-                    Text("Contract: ${token.address}")
-                }
+    TxPage(
+        onDismiss = onClose,
+        bottom = {
+            OutlineButton("Close", onClose, Modifier.weight(1f))
+            if (onSend != null) PrimaryButton("Send", onSend, Modifier.weight(1f))
+        }
+    ) {
+        PageHeader(token.symbol, onClose)
+
+        val r = raw
+        when {
+            r != null -> TxAmount("Balance", Rpc.formatUnits(r, token.decimals, token.decimals) + " " + token.symbol)
+            balanceError != null -> {
+                TxAmount("Balance", "Unavailable")
+                Text(balanceError ?: "", fontSize = 14.sp, color = Dim.Danger)
             }
-        },
-        confirmButton = {
-            if (onSend != null) {
-                TextButton(onClick = onSend) { Text("Send") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = {
-                    activity.getSystemService(ClipboardManager::class.java)
-                        .setPrimaryClip(ClipData.newPlainText("token", token.address))
-                }) { Text("Copy address") }
-                if (chain.explorerUrl != null) {
-                    TextButton(onClick = {
-                        activity.startActivity(
-                            Intent(Intent.ACTION_VIEW,
-                                "${chain.explorerUrl}/address/${token.address}".toUri())
-                        )
-                    }) { Text("Explorer") }
-                }
-                TextButton(onClick = onClose) { Text("Close") }
+            else -> TxAmount("Balance", "Loading…", color = Dim.Mid)
+        }
+
+        TxCard {
+            TxRow("Name", token.name)
+            TxLine()
+            TxRow("Symbol", token.symbol)
+            TxLine()
+            TxRow("Decimals", token.decimals.toString())
+        }
+
+        TxCard {
+            Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Network", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
             }
         }
-    )
+
+        // tap to copy
+        TxCard(Modifier.clickable {
+            activity.getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("token", token.address))
+            copied = true
+        }) {
+            Row(Modifier.fillMaxWidth()) {
+                Text("Contract", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                Text(if (copied) "Copied" else "Tap to copy", fontSize = 12.sp, color = if (copied) Dim.Accent else Dim.Mid)
+            }
+            Spacer(Modifier.height(6.dp))
+            TxMono(token.address)
+        }
+
+        TxAdvanced {
+            TxRow("Chain ID", token.chainId.toString())
+            val r2 = raw
+            if (r2 != null) TxRow("Raw units", r2.toString())
+        }
+
+        if (chain.explorerUrl != null) {
+            OutlineButton("View on explorer", {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, "${chain.explorerUrl}/address/${token.address}".toUri()))
+            })
+        }
+    }
 }
