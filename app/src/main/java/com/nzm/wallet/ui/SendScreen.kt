@@ -247,7 +247,8 @@ fun SendScreen(
         }
     }
 
-    fun fmt(v: BigInteger, dec: Int, sym: String) = "${Rpc.formatUnits(v, dec, dec)} $sym"
+    fun fmt(v: BigInteger, dec: Int, sym: String) = "${shortAmount(v, dec)} $sym"
+    fun fmtExact(v: BigInteger, dec: Int, sym: String) = "${Rpc.formatUnits(v, dec, dec)} $sym"
     fun fmtNative(v: BigInteger) = fmt(v, chain.decimals, chain.symbol)
 
     Dialog(
@@ -574,6 +575,13 @@ fun SendScreen(
                                             )
                                             Text(p.gasLimit.toString(), fontSize = 15.sp)
                                         }
+                                        TxLabel("Exact amount", top = 12)
+                                        TxMono(
+                                            if (tk != null && ta != null) fmtExact(ta, tk.decimals, tk.symbol)
+                                            else fmtExact(p.value, chain.decimals, chain.symbol)
+                                        )
+                                        TxLabel("Exact max fee", top = 12)
+                                        TxMono(fmtExact(p.maxFeeWei, chain.decimals, chain.symbol))
                                         if (tk != null) {
                                             Text(
                                                 "Token",
