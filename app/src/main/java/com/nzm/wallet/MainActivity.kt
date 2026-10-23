@@ -14,6 +14,7 @@ import com.nzm.wallet.ui.WalletGate
 import com.nzm.wallet.ui.WalletViewModel
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.ui.theme.WalletTheme
+import com.nzm.wallet.wc.WcService
 
 class MainActivity : FragmentActivity() {
     private val vm: WalletViewModel by viewModels()
@@ -36,6 +37,11 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         takeWcLink(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        WcService.onForeground()
     }
 
     /** wc: links from sites. Kept until the wallet is unlocked and WalletConnect is ready. */
