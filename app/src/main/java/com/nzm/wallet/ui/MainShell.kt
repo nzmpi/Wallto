@@ -35,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
-import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.chain.Token
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
