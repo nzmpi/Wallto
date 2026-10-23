@@ -92,12 +92,6 @@ fun ConnectedSitesPage(activity: FragmentActivity, vm: WalletViewModel, onBack: 
                 ) { toDisconnect = s.topic }
             }
             if (sessions.isNotEmpty()) Hairline()
-
-            Spacer(Modifier.height(28.dp))
-            SectionLabel("Setup")
-            Spacer(Modifier.height(6.dp))
-            SettingsRow("Reown project ID", "Set") { idDialog = true }
-            Hairline()
         }
     }
 

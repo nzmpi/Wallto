@@ -28,11 +28,13 @@ import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.wc.*
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.web3j.crypto.Credentials
 import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
 import java.math.BigInteger
+import kotlin.time.Duration.Companion.milliseconds
 
 private val MAX_UINT = BigInteger.ONE.shiftLeft(256) - BigInteger.ONE
 
@@ -66,14 +68,16 @@ private class Summary(
     val partyLabel: String,
     val danger: Boolean,
     val plain: Boolean,
-    val isTransfer: Boolean
+    val isTransfer: Boolean,
+    val exact: String? = null
 )
 
 private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
     if (tx.data.isEmpty()) {
         return Summary(
-            "Sending", Rpc.formatUnits(tx.value, chain.decimals, 18) + " " + chain.symbol,
-            null, true, tx.value, tx.to, "To", danger = false, plain = true, isTransfer = true
+            "Sending", shortAmount(tx.value, chain.decimals) + " " + chain.symbol,
+            null, true, tx.value, tx.to, "To", danger = false, plain = true, isTransfer = true,
+            exact = Rpc.formatUnits(tx.value, chain.decimals, chain.decimals) + " " + chain.symbol
         )
     }
     val d = tx.data.drop(2).lowercase()
@@ -85,8 +89,11 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
         val v = BigInteger(w, 16)
         if (v == MAX_UINT) return "Unlimited" + (token?.let { " ${it.symbol}" } ?: "") to v
         val dec = token?.decimals ?: return "$v (raw units)" to v
-        return v.toBigDecimal().movePointLeft(dec).stripTrailingZeros().toPlainString() + " ${token.symbol}" to v
+        return shortAmount(v, dec) + " ${token.symbol}" to v
     }
+    fun exactOf(v: BigInteger): String =
+        if (v == MAX_UINT) "Unlimited"
+        else token?.let { Rpc.formatUnits(v, it.decimals, it.decimals) + " ${it.symbol}" } ?: "$v (raw units)"
     return try {
         when (sel) {
             "a9059cbb" if d.length >= 8 + 128 -> {
@@ -94,16 +101,18 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
                 Summary("Sending", t, token, false, raw, addr(0), "To",
                     danger = false,
                     plain = false,
-                    isTransfer = true
+                    isTransfer = true,
+                    exact = exactOf(raw)
                 )
             }
 
             "095ea7b3" if d.length >= 8 + 128 -> {
-                val (t, _) = amountText(word(1))
+                val (t, raw) = amountText(word(1))
                 Summary("Approving", t, null, false, null, addr(0), "Spender",
                     danger = true,
                     plain = false,
-                    isTransfer = false
+                    isTransfer = false,
+                    exact = exactOf(raw)
                 )
             }
 
@@ -119,7 +128,8 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
                 Summary("Transfer from ${addr(0)}", t, token, false, raw, addr(1), "To",
                     danger = false,
                     plain = false,
-                    isTransfer = false
+                    isTransfer = false,
+                    exact = exactOf(raw)
                 )
             }
 
@@ -132,11 +142,12 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
 
 private fun other(tx: WcTx, chain: Chain) = Summary(
     "Contract call",
-    if (tx.value.signum() > 0) Rpc.formatUnits(tx.value, chain.decimals, 18) + " " + chain.symbol else null,
+    if (tx.value.signum() > 0) shortAmount(tx.value, chain.decimals) + " " + chain.symbol else null,
     null, true, tx.value.takeIf { it.signum() > 0 }, tx.to, "Contract",
     danger = false,
     plain = false,
-    isTransfer = false
+    isTransfer = false,
+    exact = if (tx.value.signum() > 0) Rpc.formatUnits(tx.value, chain.decimals, chain.decimals) + " " + chain.symbol else null
 )
 
 /** Full-screen page for a request from a connected site. Signs with the wallet the site connected with. */
@@ -156,24 +167,37 @@ fun WcRequestScreen(
     val site = req.peerMetaData
     val scope = rememberCoroutineScope()
 
-    val signer = remember(item) { WcService.sessionAddress(req.topic) }
+    val signer by produceState(WcService.sessionAddress(req.topic), item) {
+        var tries = 0
+        while (value == null && tries < 10) {
+            delay(300.milliseconds)
+            value = WcService.sessionAddress(req.topic)
+            tries++
+        }
+    }
+    val signerNow = signer
     val signerRow = vm.wallets.firstOrNull { it.address.equals(signer, ignoreCase = true) }
+        ?: if (signer != null && signer.equals(address, ignoreCase = true)) vm.activeWallet else null
     val isActive = signer != null && signer.equals(address, ignoreCase = true)
 
-    val parsed = remember(item) {
+    val parsed = remember(item, signerRow?.id, signerNow) {
         if (chain == null) Parsed.Bad("Chain ${req.chainId} is not saved in this wallet. Add it first.")
-        else if (signer == null || signerRow == null)
-            Parsed.Bad("The wallet this site connected with is not on this phone. Disconnect the site, then connect again.")
+        else if (signerNow == null)
+            Parsed.Bad("Could not read which wallet this site connected with. Disconnect the site, then connect again.")
+        else if (signerRow == null)
+            Parsed.Bad("The wallet ${shortAddress(signerNow)} this site connected with is not on this phone. Disconnect the site, then connect again.")
         else try {
             when (req.request.method) {
-                WcService.PERSONAL_SIGN -> Parsed.Msg(WcSigner.parsePersonal(req.request.params, signer))
+                WcService.PERSONAL_SIGN -> Parsed.Msg(WcSigner.parsePersonal(req.request.params,
+                    signerNow
+                ))
                 WcService.TYPED_V4 -> {
-                    val t = WcSigner.parseTyped(req.request.params, signer)
+                    val t = WcSigner.parseTyped(req.request.params, signerNow)
                     if (t.domainChainId != null && t.domainChainId != chain.chainId)
                         Parsed.Bad("Signed data is for chain ${t.domainChainId}, request is for ${chain.chainId}.")
                     else Parsed.Typed(t)
                 }
-                WcService.SEND_TX -> Parsed.Tx(WcSigner.parseTx(req.request.params, signer))
+                WcService.SEND_TX -> Parsed.Tx(WcSigner.parseTx(req.request.params, signerNow))
                 else -> Parsed.Bad("Unsupported method")
             }
         } catch (e: Exception) {
@@ -190,10 +214,10 @@ fun WcRequestScreen(
     var feeEdit by remember { mutableStateOf(false) }
     var nonceEdit by remember { mutableStateOf(false) }
 
-    if (parsed is Parsed.Tx && chain != null && signer != null) {
+    if (parsed is Parsed.Tx && chain != null && signerNow != null) {
         LaunchedEffect(item) {
             try {
-                val p = SendTx.plan(chain, signer, parsed.t.to, parsed.t.value, data = parsed.t.data)
+                val p = SendTx.plan(chain, signerNow, parsed.t.to, parsed.t.value, data = parsed.t.data)
                 plan = p
                 basePlan = p
             } catch (e: CancellationException) {
@@ -287,9 +311,9 @@ fun WcRequestScreen(
                         Text(site?.url ?: "", fontSize = 14.sp, color = Dim.Mid, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (blocked) Text(warn, fontSize = 14.sp, color = Dim.Danger)
-                    if (signerRow != null && signer != null && !isActive) {
+                    if (signerRow != null && signerNow != null && !isActive) {
                         Text(
-                            "Not your active wallet. This will be signed by ${signerRow.name} (${shortAddress(signer)}).",
+                            "Not your active wallet. This will be signed by ${signerRow.name} (${shortAddress(signerNow)}).",
                             fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger
                         )
                     }
@@ -324,9 +348,9 @@ fun WcRequestScreen(
                     }
 
                     // from / to
-                    if (parsed !is Parsed.Bad && signer != null) {
+                    if (parsed !is Parsed.Bad && signerNow != null) {
                         TxCard {
-                            TxPartyRow(if (parsed is Parsed.Tx) "From" else "Wallet", rememberParty(vm, signer))
+                            TxPartyRow(if (parsed is Parsed.Tx) "From" else "Wallet", rememberParty(vm, signerNow))
                             if (summary?.party != null) {
                                 TxLine()
                                 TxPartyRow(summary.partyLabel, rememberParty(vm, summary.party))
@@ -342,7 +366,7 @@ fun WcRequestScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Also sends", fontSize = 15.sp, color = Dim.Mid)
                                 Text(
-                                    Rpc.formatUnits(parsed.t.value, chain.decimals, 18) + " " + chain.symbol,
+                                    shortAmount(parsed.t.value, chain.decimals) + " " + chain.symbol,
                                     fontSize = 15.sp, fontWeight = FontWeight.SemiBold
                                 )
                             }
@@ -421,11 +445,13 @@ fun WcRequestScreen(
                                         )
                                     }
                                     Spacer(Modifier.width(10.dp))
-                                    Icon(Ic.Sliders, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
+                                    Icon(Ic.Edit, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
                                 }
                             }
                         }
                     }
+
+                    if (parsed is Parsed.Tx && chain != null) plan?.let { SimulationCard(vm, chain, it) }
 
                     // advanced
                     if (parsed !is Parsed.Bad) {
@@ -451,17 +477,19 @@ fun WcRequestScreen(
                                                 Text("Nonce", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
                                                 Text(p.nonce.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                                 Spacer(Modifier.width(10.dp))
-                                                Icon(Ic.Sliders, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
+                                                Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
                                             }
                                             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                                                 Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
                                                 Text(p.gasLimit.toString(), fontSize = 15.sp)
                                             }
+                                            summary?.exact?.let {
+                                                TxLabel("Exact amount", top = 12)
+                                                TxMono(it)
+                                            }
                                         }
-                                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                                            Text("To", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.width(80.dp))
-                                            TxMono(parsed.t.to)
-                                        }
+                                        Text("To", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(vertical = 8.dp))
+                                        TxMono(parsed.t.to)
                                         Text("Data", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(vertical = 8.dp))
                                         if (parsed.t.data.isEmpty()) Text("No data", fontSize = 14.sp) else TxMono(parsed.t.data)
                                         if (summary != null && !summary.plain) {

@@ -479,13 +479,15 @@ fun SendScreen(
                                         }
                                         Spacer(Modifier.width(10.dp))
                                         Icon(
-                                            Ic.Sliders,
+                                            Ic.Edit,
                                             "Edit fee",
                                             Modifier.size(18.dp),
                                             tint = Dim.Mid
                                         )
                                     }
                                 }
+
+                                SimulationCard(vm, chain, p)
 
                                 // native sends: amount plus the most the fee can be
                                 if (p.token == null) {
@@ -558,7 +560,7 @@ fun SendScreen(
                                             )
                                             Spacer(Modifier.width(10.dp))
                                             Icon(
-                                                Ic.Sliders,
+                                                Ic.Edit,
                                                 "Edit nonce",
                                                 Modifier.size(16.dp),
                                                 tint = Dim.Mid

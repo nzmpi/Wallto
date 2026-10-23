@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -53,6 +54,7 @@ private fun disconnectSessionsOf(address: String) {
 @Composable
 fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     var hasWallet by remember { mutableStateOf(vault.exists()) }
     var keyLost by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -278,6 +280,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                     hasWallet = false
                     backup = null
                     status = null
+                    SimKey.set(ctx, null)
                     vm.clearHistory()
                     vm.clearSession()
                 }

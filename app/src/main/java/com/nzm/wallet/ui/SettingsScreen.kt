@@ -1,5 +1,6 @@
 package com.nzm.wallet.ui
 
+import android.content.Context
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -48,7 +50,7 @@ fun SettingsScreen(
 ) {
     Crossfade(targetState = page, animationSpec = tween(140), label = "settings") { p ->
         when (p) {
-            SettingsPage.Root -> SettingsRoot(vm, onPage, onReveal, onWipe)
+            SettingsPage.Root -> SettingsRoot(activity, vm, onPage, onReveal, onWipe)
             SettingsPage.Wallets -> WalletsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Chains -> ChainsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Tokens -> TokensPage(activity, vm, address) { onPage(SettingsPage.Root) }
@@ -60,14 +62,20 @@ fun SettingsScreen(
 
 @Composable
 private fun SettingsRoot(
+    activity: FragmentActivity,
     vm: WalletViewModel,
     onPage: (SettingsPage) -> Unit,
     onReveal: () -> Unit,
     onWipe: () -> Unit
 ) {
+    val ctx = LocalContext.current
     val sessions by WcService.sessions.collectAsState()
+    var reownProjectId by remember { mutableStateOf(WcService.projectId(activity)) }
     var lockDialog by remember { mutableStateOf(false) }
     var keyDialog by remember { mutableStateOf(false) }
+    var reownDialog by remember { mutableStateOf(false) }
+    var alchemyKey by remember { mutableStateOf(SimKey.get(ctx)) }
+    var alchemyDialog by remember { mutableStateOf(false) }
     val chain = vm.selected
 
     Column(
@@ -110,16 +118,30 @@ private fun SettingsRoot(
         SettingsRow("Lock after", lockLabel(vm.lockAfterMs)) { lockDialog = true }
         Hairline()
         Spacer(Modifier.height(28.dp))
-        SectionLabel("Prices")
+        SectionLabel("Keys")
         Spacer(Modifier.height(6.dp))
         SettingsRow(
             "CoinGecko API key",
             when {
-                !vm.priceKeySet -> "Not set"
+                !vm.priceKeySet -> "Add"
                 vm.priceError != null -> "Error"
-                else -> "Set"
+                else -> "Change"
             }
         ) { keyDialog = true }
+        SettingsRow(
+            "Reown project ID",
+            when {
+                reownProjectId == null -> "Add"
+                else -> "Change"
+            }
+        ) { reownDialog = true }
+        SettingsRow(
+            "Alchemy API key",
+            when {
+                alchemyKey == null -> "Add"
+                else -> "Change"
+            }
+        ) { alchemyDialog = true }
         Hairline()
         Spacer(Modifier.height(28.dp))
         Hairline()
@@ -153,6 +175,8 @@ private fun SettingsRoot(
         )
     }
     if (keyDialog) PriceKeyDialog(vm) { keyDialog = false }
+    if (reownDialog) ReownDialog(activity) { reownDialog = false }
+    if (alchemyDialog) AlchemyDialog(ctx) { alchemyDialog = false }
 }
 
 @Composable
@@ -408,6 +432,95 @@ private fun PriceKeyDialog(vm: WalletViewModel, onClose: () -> Unit) {
             Row {
                 if (vm.priceKeySet) {
                     TextButton(onClick = { vm.setPriceKey(null); onClose() }) {
+                        Text(
+                            "Remove",
+                            color = Dim.Danger
+                        )
+                    }
+                }
+                TextButton(onClick = onClose) { Text("Cancel") }
+            }
+        }
+    )
+}
+
+@Composable
+private fun ReownDialog(activity: FragmentActivity, onClose: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val idSet = WcService.projectId(activity) != null
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Reown project ID") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Restart the app after saving. Leave empty and save to remove it.")
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it }, singleLine = true,
+                    label = { Text(if (idSet) "New ID" else "Project ID") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = text.isNotBlank(),
+                onClick = {
+                    WcService.setProjectId(activity, text)
+                    onClose()
+                }) { Text("Save") }
+        },
+        dismissButton = {
+            Row {
+                if (idSet) {
+                    TextButton(onClick = { WcService.setProjectId(activity, null); onClose() }) {
+                        Text(
+                            "Remove",
+                            color = Dim.Danger
+                        )
+                    }
+                }
+                TextButton(onClick = onClose) { Text("Cancel") }
+            }
+        }
+    )
+}
+
+@Composable
+private fun AlchemyDialog(ctx: Context, onClose: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val keySet = SimKey.get(ctx) != null
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Alchemy API key") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Used only when you tap Simulation. Alchemy then sees the sender, contract, value and data of that transaction. " +
+                            "The key is stored encrypted on this phone. Free keys: dashboard.alchemy.com",
+                    fontSize = 14.sp
+                )
+                OutlinedTextField(
+                    text, { text = it }, singleLine = true,
+                    label = { Text(if (keySet) "New key" else "API key") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = text.isNotBlank(),
+                onClick = {
+                    SimKey.set(ctx, text)
+                    onClose()
+                }) { Text("Save") }
+        },
+        dismissButton = {
+            Row {
+                if (keySet) {
+                    TextButton(onClick = { SimKey.set(ctx, null); onClose() }) {
                         Text(
                             "Remove",
                             color = Dim.Danger

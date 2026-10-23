@@ -65,11 +65,6 @@ object SavedContracts {
         if (i >= 0) { items[i] = items[i].copy(abi = abi); persist() }
     }
 
-    fun rename(id: String, name: String) {
-        val i = items.indexOfFirst { it.id == id }
-        if (i >= 0) { items[i] = items[i].copy(name = name.trim()); persist() }
-    }
-
     fun remove(id: String) {
         items.removeAll { it.id == id }
         persist()

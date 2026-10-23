@@ -3,6 +3,7 @@ package com.nzm.wallet.wc
 
 import android.app.Application
 import android.content.Context
+import android.content.SharedPreferences
 import com.nzm.wallet.chain.Chain
 import com.reown.android.Core
 import com.reown.android.CoreClient
@@ -46,6 +47,24 @@ object WcService {
         fun switchTo(chain: Chain)
     }
     @Volatile var provider: Provider? = null
+    @Volatile private var accountPrefs: SharedPreferences? = null
+    private fun cacheAccount(topic: String, address: String) {
+        accountPrefs?.edit { putString(topic, address) }
+    }
+
+    private val _relayUp = MutableStateFlow<Boolean?>(null)
+
+    private fun relayConnect() {
+        if (!started || _relayUp.value == true) return
+        try {
+            CoreClient.Relay.connect(onError = { e: Core.Model.Error ->
+                _status.value = "Relay connect: ${e.throwable.message}"
+            })
+        } catch (_: Exception) {
+        }
+    }
+
+    fun onForeground() = relayConnect()
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("wc_prefs", Context.MODE_PRIVATE)
 
@@ -62,13 +81,18 @@ object WcService {
     fun accountOf(session: Wallet.Model.Session): String? =
         session.namespaces["eip155"]?.accounts?.firstOrNull()?.substringAfterLast(':')
 
-    fun sessionAddress(topic: String): String? = try {
-        WalletKit.getActiveSessionByTopic(topic)?.let { accountOf(it) }
-    } catch (_: Exception) {
-        null
+    fun sessionAddress(topic: String): String? {
+        val live = try {
+            WalletKit.getActiveSessionByTopic(topic)?.let { accountOf(it) }
+        } catch (_: Exception) {
+            null
+        }
+        if (live != null) cacheAccount(topic, live)
+        return live ?: accountPrefs?.getString(topic, null)
     }
 
     fun start(app: Application) {
+        if (accountPrefs == null) accountPrefs = app.getSharedPreferences("wc_accounts", Context.MODE_PRIVATE)
         if (started) return
         val projectId = projectId(app) ?: return
         started = true
@@ -82,7 +106,7 @@ object WcService {
                 icons = emptyList(),
                 redirect = "nzmwallet://request"
             ),
-            connectionType = ConnectionType.AUTOMATIC,
+            connectionType = ConnectionType.MANUAL,
             relay = null,
             keyServerUrl = null,
             networkClientTimeout = null,
@@ -95,6 +119,7 @@ object WcService {
                 WalletKit.setWalletDelegate(delegate)
                 _ready.value = true
                 refreshSessions()
+                relayConnect()
             },
             onError = { _status.value = "WalletConnect init failed: ${it.throwable.message}" }
         )
@@ -123,6 +148,7 @@ object WcService {
         } catch (_: Exception) {
             emptyList()
         }
+        _sessions.value.forEach { s -> accountOf(s)?.let { cacheAccount(s.topic, it) } }
     }
 
     fun disconnect(topic: String) {
@@ -131,6 +157,7 @@ object WcService {
             onSuccess = { refreshSessions() },
             onError = { _status.value = it.throwable.message ?: "Disconnect failed"; refreshSessions() }
         )
+        accountPrefs?.edit { remove(topic) }
     }
 
     /** Shares the given wallet address on every chain saved in the wallet. Returns an error text or null. */
@@ -268,6 +295,7 @@ object WcService {
             sessionRequest: Wallet.Model.SessionRequest,
             verifyContext: Wallet.Model.VerifyContext
         ) {
+            refreshSessions()
             if (sessionRequest.request.method == SWITCH_CHAIN) { handleSwitch(sessionRequest); return }
             if (sessionRequest.request.method !in METHODS) {
                 // eth_sign, eth_signTransaction and the rest are refused without a prompt
@@ -277,11 +305,14 @@ object WcService {
             _requests.update { it + Request(sessionRequest, verifyContext) }
         }
 
+        override fun onConnectionStateChange(state: Wallet.Model.ConnectionState) {
+            _relayUp.value = state.isAvailable
+        }
+
         override fun onSessionExtend(session: Wallet.Model.Session) { refreshSessions() }
         override fun onSessionDelete(sessionDelete: Wallet.Model.SessionDelete) { refreshSessions() }
         override fun onSessionSettleResponse(settleSessionResponse: Wallet.Model.SettledSessionResponse) { refreshSessions() }
         override fun onSessionUpdateResponse(sessionUpdateResponse: Wallet.Model.SessionUpdateResponse) {}
-        override fun onConnectionStateChange(state: Wallet.Model.ConnectionState) {}
         override fun onError(error: Wallet.Model.Error) { _status.value = error.throwable.message }
     }
 }
