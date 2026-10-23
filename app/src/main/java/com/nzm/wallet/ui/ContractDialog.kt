@@ -15,6 +15,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -94,6 +96,8 @@ fun ContractDialog(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var saveDialog by remember { mutableStateOf(false) }
+    var listOpen by remember { mutableStateOf(true) }
+    val focus = LocalFocusManager.current
 
     fun fmt(v: BigInteger) = "${Rpc.formatUnits(v, chain.decimals, chain.decimals)} ${chain.symbol}"
 
@@ -314,8 +318,8 @@ fun ContractDialog(
 
                 // read / write
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ModePill("Read", !write) { write = false; fn = null; readResult = null }
-                    ModePill("Write", write) { write = true; fn = null; readResult = null }
+                    ModePill("Read", !write) { write = false; fn = null; listOpen = true; readResult = null }
+                    ModePill("Write", write) { write = true; fn = null; listOpen = true; readResult = null }
                 }
 
                 // contract
@@ -340,6 +344,7 @@ fun ContractDialog(
                                 abiNote = r.note
                                 manual = false
                                 fn = null
+                                listOpen = true
                                 argVals.clear()
                                 savedNow?.let { SavedContracts.setAbi(it.id, r.abi) }
                             }
@@ -366,34 +371,40 @@ fun ContractDialog(
                         Text(if (write) "Write functions" else "Read functions", fontSize = 15.sp, color = Dim.Mid)
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
-                            filter, { filter = it }, label = { Text("Search") }, singleLine = true,
-                            modifier = Modifier.fillMaxWidth(), shape = FIELD_SHAPE
+                            filter, { filter = it; listOpen = true }, label = { Text("Search") }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) listOpen = true },
+                            shape = FIELD_SHAPE
                         )
-                        Spacer(Modifier.height(8.dp))
-                        if (shown.isEmpty()) Text("No matching functions.", fontSize = 14.sp, color = Dim.Mid)
-                        shown.take(15).forEach { f ->
-                            Column(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                                    .background(if (fn?.sigText == f.sigText) Dim.RaisedSelected else androidx.compose.ui.graphics.Color.Transparent)
-                                    .clickable {
-                                        fn = f
-                                        readResult = null
-                                        argVals.clear()
-                                        repeat(f.inputTypes.size) { argVals.add("") }
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                            ) {
-                                Text(f.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                Text(
-                                    "(" + f.inputTypes.joinToString(", ") + ")" + if (f.payable) " payable" else "",
-                                    fontSize = 12.sp, color = Dim.Mid, maxLines = 1
-                                )
+                        if (listOpen) {
+                            Spacer(Modifier.height(8.dp))
+                            if (shown.isEmpty()) Text("No matching functions.", fontSize = 14.sp, color = Dim.Mid)
+                            shown.take(15).forEach { f ->
+                                Column(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                                        .background(if (fn?.sigText == f.sigText) Dim.RaisedSelected else androidx.compose.ui.graphics.Color.Transparent)
+                                        .clickable {
+                                            fn = f
+                                            filter = f.name
+                                            listOpen = false
+                                            focus.clearFocus()
+                                            readResult = null
+                                            argVals.clear()
+                                            repeat(f.inputTypes.size) { argVals.add("") }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
+                                    Text(f.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text(
+                                        "(" + f.inputTypes.joinToString(", ") + ")" + if (f.payable) " payable" else "",
+                                        fontSize = 12.sp, color = Dim.Mid, maxLines = 1
+                                    )
+                                }
                             }
+                            if (shown.size > 15) Text("Showing 15 of ${shown.size}. Search to narrow.", fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 6.dp))
                         }
-                        if (shown.size > 15) Text("Showing 15 of ${shown.size}. Search to narrow.", fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 6.dp))
                         if ((fns.skipped) > 0) Text("${fns.skipped} function(s) use types this wallet cannot encode.", fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 6.dp))
                         Spacer(Modifier.height(6.dp))
-                        TextButton(onClick = { manual = true; fn = null }) { Text("Enter signature by hand") }
+                        TextButton(onClick = { manual = true; fn = null; listOpen = true}) { Text("Enter signature by hand") }
                     }
                     fn?.let { f ->
                         TxCard {
