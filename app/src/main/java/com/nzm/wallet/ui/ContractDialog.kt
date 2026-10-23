@@ -273,12 +273,13 @@ fun ContractDialog(
                             if (fiat != null) Text(fmt(p.maxFeeWei), fontSize = 12.sp, color = Dim.Mid)
                         }
                         Spacer(Modifier.width(10.dp))
-                        Icon(Ic.Sliders, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
+                        Icon(Ic.Edit, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
                     }
                 }
                 TxCard {
                     TxRow("Max total", fmt(p.maxTotalWei))
                 }
+                SimulationCard(vm, chain, p)
                 TxAdvanced {
                     Row(
                         Modifier.fillMaxWidth().clickable(enabled = !busy) { nonceEdit = true }.padding(vertical = 8.dp),
@@ -287,7 +288,7 @@ fun ContractDialog(
                         Text("Nonce", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
                         Text(p.nonce.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.width(10.dp))
-                        Icon(Ic.Sliders, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
+                        Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
                     }
                     TxRow("Gas limit", p.gasLimit.toString())
                     TxLabel("Calldata", top = 12)

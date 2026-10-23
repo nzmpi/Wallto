@@ -124,4 +124,16 @@ object Ic {
         moveTo(19f, 7f); lineTo(19f, 13f)
         moveTo(16f, 10f); lineTo(22f, 10f)
     }
+    val Edit = icon("edit") {
+        moveTo(4f, 20f)
+        lineTo(5.5f, 15.5f)
+        lineTo(17f, 4f)
+        lineTo(20f, 7f)
+        lineTo(8.5f, 18.5f)
+        close()
+        moveTo(15f, 6f)
+        lineTo(18f, 9f)
+        moveTo(4f, 22f)
+        horizontalLineTo(20f)
+    }
 }
