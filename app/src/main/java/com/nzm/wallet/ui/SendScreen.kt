@@ -41,6 +41,7 @@ import java.math.BigDecimal
 import java.math.BigInteger
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.core.net.toUri
+import org.web3j.utils.Numeric
 
 private const val SEND_ZERO = "0x0000000000000000000000000000000000000000"
 
@@ -85,9 +86,14 @@ fun SendScreen(
     var discardDialog by remember { mutableStateOf(false) }
     var addToken by remember { mutableStateOf(false) }
     var knownAddrs by remember { mutableStateOf<Set<String>?>(null) }
+    val batchItems = remember { mutableStateListOf<BatchItem>() }
+    var batchOpen by remember { mutableStateOf(false) }
+    val batchOk = rememberBatchSupport(chain, from)
+    var planName by remember { mutableStateOf<String?>(null) }
 
     val p = plan
     val h = hash
+    val ensName: String? = if (resolved != null) to.trim() else planName
 
     // the address that will receive funds, if the input is valid so far
     val target: String? = resolved ?: to.trim().takeIf { SendTx.isValidAddress(it) }
@@ -95,6 +101,15 @@ fun SendScreen(
     val typedIsName = Ens.looksLikeName(to)
     val canReview =
         !busy && !resolving && to.isNotBlank() && amount.isNotBlank() && (!typedIsName || resolved != null)
+
+    fun committed(): BigInteger = batchItems.fold(BigInteger.ZERO) { acc, b ->
+        acc + when {
+            token == null -> b.value
+            b.token?.address.equals(token.address, ignoreCase = true) -> b.spend
+            else -> BigInteger.ZERO
+        }
+    }
+    val remaining: BigInteger? = balance?.let { (it - committed()).max(BigInteger.ZERO) }
 
     // chain or token changed: the old amount no longer applies
     LaunchedEffect(chain.chainId, tokenAddr) { amount = ""; error = null }
@@ -153,13 +168,13 @@ fun SendScreen(
             busy -> {}
             h != null -> onClose(true)
             p != null -> plan = null
-            to.isNotBlank() || amount.isNotBlank() -> discardDialog = true
+            to.isNotBlank() || amount.isNotBlank() || batchItems.isNotEmpty() -> discardDialog = true
             else -> onClose(false)
         }
     }
 
     fun fill(pct: Int) {
-        val b = balance ?: return
+        val b = remaining ?: return
         scope.launch {
             var v = b * BigInteger.valueOf(pct.toLong()) / BigInteger.valueOf(100)
             if (token == null && pct == 100) {
@@ -185,7 +200,7 @@ fun SendScreen(
         scope.launch {
             try {
                 val typed = to.trim()
-                if (Ens.looksLikeName(typed)) require(resolved != null) {
+                if (Ens.looksLikeName(typed)) require(ensName != null) {
                     ensError ?: "Name not resolved yet"
                 }
                 val dest = resolved ?: typed
@@ -218,8 +233,84 @@ fun SendScreen(
                         Erc20.encodeTransfer(dest, units), dest, token, units
                     )
                 }
+                planName = null
                 basePlan = built
                 advanced = false
+                plan = built
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = e.message ?: "Failed"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    suspend fun buildBatchItem(): BatchItem {
+        val typed = to.trim()
+        if (Ens.looksLikeName(typed)) require(resolved != null) { ensError ?: "Name not resolved yet" }
+        val dest = resolved ?: typed
+        require(SendTx.isValidAddress(dest)) { "Invalid recipient address or checksum" }
+        require(!dest.equals(SEND_ZERO, ignoreCase = true)) { "Recipient is the zero address" }
+        val units = SendTx.parseAmount(amount, decimals)
+        require(units.signum() > 0) { "Enter an amount" }
+        val ens = if (resolved != null) typed else null
+        return if (token == null) {
+            val have = balance ?: throw IllegalArgumentException("Balance not loaded yet")
+            val left = (have - committed()).max(BigInteger.ZERO)
+            require(units <= left) { "Only ${shortAmount(left, decimals)} ${chain.symbol} left after the batch" }
+            BatchItem("Send ${shortAmount(units, decimals)} ${chain.symbol}", dest, units, ByteArray(0), name = ens)
+        } else {
+            require(!dest.equals(token.address, ignoreCase = true)) { "Recipient is the token contract. Tokens would be lost." }
+            val bal = Erc20.balanceOf(chain.rpcUrl, token.address, from)
+            val left = (bal - committed()).max(BigInteger.ZERO)
+            require(units <= left) { "Only ${shortAmount(left, token.decimals)} ${token.symbol} left after the batch" }
+            BatchItem(
+                "Send ${shortAmount(units, decimals)} ${token.symbol}", token.address, BigInteger.ZERO,
+                Numeric.hexStringToByteArray(Erc20.encodeTransfer(dest, units)),
+                recipient = dest, name = ens, token = token, spend = units
+            )
+        }
+    }
+
+    fun addToBatch(thenOpen: Boolean = false) {
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                batchItems.add(buildBatchItem())
+                to = ""
+                amount = ""
+                tokenAddr = initialToken?.address
+                if (thenOpen) batchOpen = true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = e.message ?: "Failed"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun reviewSingle(b: BatchItem) {
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                val t = b.token
+                val built = if (t == null) {
+                    SendTx.plan(chain, from, b.to, b.value)
+                } else {
+                    SendTx.plan(
+                        chain, from, t.address, BigInteger.ZERO,
+                        Numeric.toHexString(b.data), b.recipient, t, b.spend
+                    )
+                }
+                basePlan = built
+                advanced = false
+                planName = b.name
                 plan = built
             } catch (e: CancellationException) {
                 throw e
@@ -283,7 +374,7 @@ fun SendScreen(
                         ) {
                             Icon(Ic.ChevronLeft, "Back", Modifier.size(24.dp))
                         }
-                        ChainChip(chain) { if (!busy) chainMenu = true }
+                        ChainChip(chain) { if (!busy && batchItems.isEmpty()) chainMenu = true }
                     }
 
                     when {
@@ -319,8 +410,8 @@ fun SendScreen(
                                         TxLine()
                                         TxPartyRow(
                                             "To",
-                                            if (resolved != null) Party(
-                                                to.trim(),
+                                            if (ensName != null) Party(
+                                                ensName,
                                                 shortAddress(dest)
                                             ) else rememberParty(vm, dest)
                                         )
@@ -410,13 +501,13 @@ fun SendScreen(
                                     TxLine()
                                     TxPartyRow(
                                         "To",
-                                        if (resolved != null) Party(
-                                            to.trim(),
+                                        if (ensName != null) Party(
+                                            ensName,
                                             shortAddress(dest)
                                         ) else rememberParty(vm, dest)
                                     )
                                 }
-                                if (resolved != null && chain.chainId != 1L) {
+                                if (ensName != null && chain.chainId != 1L) {
                                     Text(
                                         "Resolved on Ethereum. Make sure you control this address on ${chain.name}. " +
                                                 "Contract wallets (like Safe) may not exist at the same address on other chains.",
@@ -620,7 +711,7 @@ fun SendScreen(
                                                     bottom = 8.dp
                                                 )
                                             )
-                                            Text(to.trim(), fontSize = 14.sp)
+                                            Text(ensName ?: "", fontSize = 14.sp)
                                         }
                                         Text(
                                             "Data",
@@ -676,10 +767,10 @@ fun SendScreen(
                                 ) {
                                     Text("Send", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                     Text(
-                                        "Max: " + (balance?.let { vm.amountText(it, decimals) }
+                                        "Max: " + (remaining?.let { vm.amountText(it, decimals) }
                                             ?: "…"),
                                         fontSize = 14.sp, color = Dim.Accent,
-                                        modifier = Modifier.clickable(enabled = balance != null) {
+                                        modifier = Modifier.clickable(enabled = remaining != null) {
                                             fill(
                                                 100
                                             )
@@ -771,8 +862,8 @@ fun SendScreen(
                                         ?.let { Text(it, fontSize = 14.sp, color = Dim.Mid) }
                                     Spacer(Modifier.height(8.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        PctChip("25%", balance != null) { fill(25) }
-                                        PctChip("50%", balance != null) { fill(50) }
+                                        PctChip("25%", remaining != null) { fill(25) }
+                                        PctChip("50%", remaining != null) { fill(50) }
                                     }
                                 }
 
@@ -879,6 +970,21 @@ fun SendScreen(
                                     )
                                 }
 
+                                if (batchItems.isNotEmpty()) {
+                                    Spacer(Modifier.height(24.dp))
+                                    TxCard {
+                                        Text("Batch (${batchItems.size})", fontSize = 15.sp, color = Dim.Mid)
+                                        batchItems.forEachIndexed { i, b ->
+                                            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Text("${i + 1}. ${batchLineText(vm, b)}", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                                Icon(Ic.Trash, "Remove", Modifier.size(20.dp).clickable { batchItems.removeAt(i) }, tint = Dim.Mid)
+                                            }
+                                        }
+                                        Text("The network is locked while the batch has calls.", fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 4.dp))
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                }
+
                                 // contacts, filtered by what is typed
                                 val q = to.trim().lowercase()
                                 val shown = vm.contacts.filter {
@@ -925,10 +1031,29 @@ fun SendScreen(
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
                             }
+                            if (batchOk || batchItems.isNotEmpty()) {
+                                OutlineButton("Add to batch", onClick = { addToBatch() }, icon = Ic.Plus)
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            val inBatch = batchItems.isNotEmpty()
+                            val single = batchItems.size == 1 && !canReview
+                            val count = batchItems.size + if (canReview) 1 else 0
                             PrimaryButton(
-                                if (busy) "Working…" else "Review",
-                                onClick = { review() },
-                                enabled = canReview
+                                when {
+                                    busy -> "Working…"
+                                    !inBatch || single -> "Review"
+                                    else -> "Review batch ($count calls)"
+                                },
+                                onClick = {
+                                    when {
+                                        !inBatch -> review()
+                                        single -> reviewSingle(batchItems[0])
+                                        canReview -> addToBatch(thenOpen = true)
+                                        else -> batchOpen = true
+                                    }
+                                },
+                                enabled = if (inBatch) !busy else canReview
                             )
                             Spacer(Modifier.height(16.dp))
                         }
@@ -965,6 +1090,13 @@ fun SendScreen(
             onConfirm = { discardDialog = false; onClose(false) },
             onDismiss = { discardDialog = false }
         )
+    }
+
+    if (batchOpen) {
+        BatchDialog(activity, vault, vm, chain, from, sharedItems = batchItems) { sent ->
+            batchOpen = false
+            if (sent) onClose(true)
+        }
     }
 
     val ep = plan
