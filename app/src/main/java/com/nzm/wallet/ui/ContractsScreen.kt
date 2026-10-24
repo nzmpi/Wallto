@@ -39,6 +39,8 @@ fun ContractsScreen(
     var toRemove by remember { mutableStateOf<SavedContract?>(null) }
     val chain = vm.selected
     val saved = SavedContracts.items
+    var batch by remember { mutableStateOf(false) }
+    val batchOk = rememberBatchSupport(chain, address)
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -47,6 +49,11 @@ fun ContractsScreen(
         TabHeader("Contracts", chain, onChainMenu)
         Spacer(Modifier.height(28.dp))
         PrimaryButton("New call", onClick = { session = CallSession(null) }, icon = Ic.Plus, enabled = chain != null)
+        Spacer(Modifier.height(12.dp))
+        if (batchOk) {
+            Spacer(Modifier.height(12.dp))
+            OutlineButton("Batch transaction", onClick = { batch = true }, icon = Ic.Rows)
+        }
         Spacer(Modifier.height(36.dp))
         Text("Saved contracts", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         if (saved.isEmpty()) {
@@ -98,13 +105,18 @@ fun ContractsScreen(
     }
 
     val s = session
-    // a saved contract on another chain opens once the chain switch has happened
     if (s != null && chain != null && (s.saved == null || s.saved.chainId == chain.chainId)) {
         key(s) {
             ContractDialog(activity, vault, vm, chain, address, s.saved) { sent ->
                 session = null
                 if (sent) vm.refresh()
             }
+        }
+    }
+    if (batch && chain != null) {
+        BatchDialog(activity, vault, vm, chain, address) { sent ->
+            batch = false
+            if (sent) vm.refresh()
         }
     }
 }
