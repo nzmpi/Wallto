@@ -26,7 +26,12 @@ fun WcHost(activity: FragmentActivity, vault: Vault, vm: WalletViewModel, addres
     if (p != null) {
         key(p.proposal.proposerPublicKey) { ProposalDialog(vm, address, p) }
     } else if (r != null) {
-        key(r.request.request.id) { WcRequestScreen(activity, vault, vm, address, r) }
+        key(r.request.request.id) {
+            if (r.request.request.method == WcService.SEND_CALLS)
+                WcBatchScreen(activity, vault, vm, address, r)
+            else
+                WcRequestScreen(activity, vault, vm, address, r)
+        }
     }
 }
 

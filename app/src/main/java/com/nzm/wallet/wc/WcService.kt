@@ -15,14 +15,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import androidx.core.content.edit
+import com.nzm.wallet.ui.Batch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONArray
+import org.json.JSONObject
+import org.web3j.protocol.Web3j
+import org.web3j.protocol.http.HttpService
 
 object WcService {
     const val PERSONAL_SIGN = "personal_sign"
     const val TYPED_V4 = "eth_signTypedData_v4"
     const val SEND_TX = "eth_sendTransaction"
     const val SWITCH_CHAIN = "wallet_switchEthereumChain"
-    private val METHODS = listOf(PERSONAL_SIGN, TYPED_V4, SEND_TX, SWITCH_CHAIN)
+    const val SEND_CALLS = "wallet_sendCalls"
+    const val GET_CALLS_STATUS = "wallet_getCallsStatus"
+    const val GET_CAPABILITIES = "wallet_getCapabilities"
+    private val METHODS = listOf(PERSONAL_SIGN, TYPED_V4, SEND_TX, SWITCH_CHAIN, SEND_CALLS, GET_CALLS_STATUS, GET_CAPABILITIES)
     private val EVENTS = listOf("chainChanged", "accountsChanged")
 
     data class Proposal(val proposal: Wallet.Model.SessionProposal, val verify: Wallet.Model.VerifyContext)
@@ -283,6 +294,84 @@ object WcService {
         )
     }
 
+    private val bg = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun saveCall(id: String, chainId: Long, hash: String) {
+        accountPrefs?.edit { putString("call:$id", "$chainId:$hash") }
+    }
+
+    private fun result(r: Wallet.Model.SessionRequest, json: String) =
+        send(r.topic, Wallet.Model.JsonRpcResponse.JsonRpcResult(id = r.request.id, result = json))
+
+    /** Read-only batch methods. True if answered here, no UI. */
+    private fun answerReadOnly(r: Wallet.Model.SessionRequest): Boolean {
+        val chains = provider?.chains() ?: emptyList()
+        when (r.request.method) {
+            GET_CAPABILITIES -> bg.launch {
+                try {
+                    val p = JSONArray(r.request.params)
+                    val acct = p.getString(0)
+                    val asked = p.optJSONArray(1)?.let { a ->
+                        (0 until a.length()).map { a.getString(it).removePrefix("0x").toLong(16) }
+                    }
+                    val out = JSONObject()
+                    for (c in chains) {
+                        if (asked != null && c.chainId !in asked) continue
+                        val ok = try { Batch.status(c, acct).supportsBatch } catch (_: Exception) { false }
+                        out.put(
+                            "0x" + c.chainId.toString(16),
+                            JSONObject().put("atomic", JSONObject().put("status", if (ok) "supported" else "unsupported"))
+                        )
+                    }
+                    result(r, out.toString())
+                } catch (_: Exception) {
+                    errorTo(r.topic, r.request.id, -32602, "Bad params")
+                }
+            }
+            GET_CALLS_STATUS -> bg.launch {
+                try {
+                    val raw = JSONArray(r.request.params).get(0)
+                    val id = if (raw is JSONObject) raw.getString("id") else raw.toString()
+                    val saved = accountPrefs?.getString("call:$id", null)
+                        ?: return@launch errorTo(r.topic, r.request.id, 5730, "Unknown bundle id")
+                    val (cid, hash) = saved.split(":", limit = 2)
+                    val chain = chains.firstOrNull { it.chainId == cid.toLong() }
+                        ?: return@launch errorTo(r.topic, r.request.id, 5710, "Chain not available")
+                    val web3 = Web3j.build(HttpService(chain.rpcUrl))
+                    val rc = try {
+                        web3.ethGetTransactionReceipt(hash).send().transactionReceipt.orElse(null)
+                    } finally {
+                        web3.shutdown()
+                    }
+                    val o = JSONObject().put("version", "2.0.0").put("id", id)
+                        .put("chainId", "0x" + cid.toLong().toString(16)).put("atomic", true)
+                    if (rc == null) {
+                        o.put("status", 100)
+                    } else {
+                        val ok = rc.isStatusOK
+                        o.put("status", if (ok) 200 else 500)
+                        o.put(
+                            "receipts", JSONArray().put(
+                                JSONObject()
+                                    .put("logs", JSONArray())
+                                    .put("status", if (ok) "0x1" else "0x0")
+                                    .put("blockHash", rc.blockHash)
+                                    .put("blockNumber", "0x" + rc.blockNumber.toString(16))
+                                    .put("gasUsed", "0x" + rc.gasUsed.toString(16))
+                                    .put("transactionHash", rc.transactionHash)
+                            )
+                        )
+                    }
+                    result(r, o.toString())
+                } catch (e: Exception) {
+                    errorTo(r.topic, r.request.id, -32603, e.message ?: "Lookup failed")
+                }
+            }
+            else -> return false
+        }
+        return true
+    }
+
     private val delegate = object : WalletKit.WalletDelegate {
         override fun onSessionProposal(
             sessionProposal: Wallet.Model.SessionProposal,
@@ -297,6 +386,7 @@ object WcService {
         ) {
             refreshSessions()
             if (sessionRequest.request.method == SWITCH_CHAIN) { handleSwitch(sessionRequest); return }
+            if (answerReadOnly(sessionRequest)) return
             if (sessionRequest.request.method !in METHODS) {
                 // eth_sign, eth_signTransaction and the rest are refused without a prompt
                 errorTo(sessionRequest.topic, sessionRequest.request.id, 4200, "Unsupported method")
