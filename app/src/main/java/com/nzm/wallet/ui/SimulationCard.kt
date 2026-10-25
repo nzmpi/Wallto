@@ -79,7 +79,7 @@ fun SimulationCard(vm: WalletViewModel, chain: Chain, plan: TxPlan) {
                     Column(Modifier.padding(vertical = 4.dp)) {
                         Text(if (l.incoming) "You receive" else "You send", fontSize = 12.sp, color = Dim.Mid)
                         Text(
-                            (if (l.incoming) "+" else "−") + l.amount.removePrefix("≈") + " " + l.symbol,
+                            (if (l.incoming) "+ " else "− ") + l.amount.removePrefix("≈ ") + " " + l.symbol,
                             fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                             color = if (l.incoming) TxOk else Dim.Danger
                         )

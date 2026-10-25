@@ -422,12 +422,16 @@ private fun AddCallDialog(vm: WalletViewModel, chain: Chain, onAdd: (BatchItem) 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Kind.entries.forEach { k ->
                         Box(
-                            Modifier.height(32.dp).clip(RoundedCornerShape(16.dp))
+                            Modifier.weight(1f).height(32.dp).clip(RoundedCornerShape(16.dp))
                                 .background(if (kind == k) Dim.RaisedSelected else Dim.Raised)
-                                .clickable { kind = k; error = null }.padding(horizontal = 12.dp),
+                                .clickable { kind = k; error = null },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(k.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (kind == k) Dim.Ink else Dim.Mid)
+                            Text(
+                                k.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                maxLines = 1, softWrap = false,
+                                color = if (kind == k) Dim.Ink else Dim.Mid
+                            )
                         }
                     }
                 }
