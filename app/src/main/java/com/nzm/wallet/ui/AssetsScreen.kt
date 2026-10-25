@@ -8,6 +8,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,20 +40,18 @@ fun AssetsScreen(
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         item {
+            val maxChipWidth = with(LocalDensity.current) {
+                LocalWindowInfo.current.containerSize.width.toDp()
+            } * 40 / 100
             Row(
                 Modifier.fillMaxWidth().padding(top = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    Modifier.weight(1f, fill = false).padding(end = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    WalletChip(vm.walletLabel(address), onWalletMenu)
-                    CopyAddressButton(address)
-                }
-                ChainChip(chain, onChainMenu)
+                WalletChip(vm.walletLabel(address), Modifier.widthIn(max = maxChipWidth), onWalletMenu)
+                CopyAddressButton(address)
+                Spacer(Modifier.weight(1f))
+                ChainChip(chain, Modifier.widthIn(max = maxChipWidth), onChainMenu)
             }
         }
         item {

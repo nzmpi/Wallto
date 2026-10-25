@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -65,7 +66,7 @@ fun TabHeader(title: String, chain: Chain?, onChainMenu: () -> Unit) {
     ) {
         ScreenTitle(title)
         if (chain != null) {
-            ChainChip(chain, onChainMenu)
+            ChainChip(chain, Modifier, onChainMenu)
         }
     }
 }
@@ -131,9 +132,9 @@ fun OutlineButton(
 }
 
 @Composable
-fun ChainChip(chain: Chain, onClick: () -> Unit) {
+fun ChainChip(chain: Chain, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Row(
-        Modifier
+        modifier
             .height(44.dp)
             .clip(RoundedCornerShape(22.dp))
             .clickable(role = Role.Button, onClick = onClick)
@@ -142,7 +143,11 @@ fun ChainChip(chain: Chain, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         ChainIcon(chain, 28.dp)
-        Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+            modifier = Modifier.weight(1f, fill = false).basicMarquee(iterations = Int.MAX_VALUE)
+        )
         Icon(Ic.ChevronDown, null, Modifier.size(16.dp))
     }
 }
@@ -154,10 +159,10 @@ fun WalletViewModel.walletLabel(address: String): String {
 }
 
 @Composable
-fun WalletChip(label: String, onClick: () -> Unit) {
+fun WalletChip(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(22.dp)
     Row(
-        Modifier
+        modifier
             .height(44.dp)
             .clip(shape)
             .border(1.5.dp, Dim.Outline, shape)
@@ -167,8 +172,9 @@ fun WalletChip(label: String, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
-            label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 160.dp)
+            label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+            modifier = Modifier.weight(1f, fill = false).basicMarquee(iterations = Int.MAX_VALUE)
         )
         Icon(Ic.ChevronDown, "Switch wallet", Modifier.size(14.dp), tint = Dim.Mid)
     }
