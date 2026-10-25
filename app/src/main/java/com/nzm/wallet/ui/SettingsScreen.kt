@@ -23,6 +23,7 @@ import com.nzm.wallet.chain.Contact
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.chain.Token
 import com.nzm.wallet.chain.WalletRow
+import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.launch
@@ -41,6 +42,7 @@ private fun lockLabel(ms: Long) =
 @Composable
 fun SettingsScreen(
     activity: FragmentActivity,
+    vault: Vault,
     vm: WalletViewModel,
     address: String,
     page: SettingsPage,
@@ -50,7 +52,7 @@ fun SettingsScreen(
 ) {
     Crossfade(targetState = page, animationSpec = tween(140), label = "settings") { p ->
         when (p) {
-            SettingsPage.Root -> SettingsRoot(activity, vm, onPage, onReveal, onWipe)
+            SettingsPage.Root -> SettingsRoot(activity, vault, vm, address, onPage, onReveal, onWipe)
             SettingsPage.Wallets -> WalletsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Chains -> ChainsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Tokens -> TokensPage(activity, vm, address) { onPage(SettingsPage.Root) }
@@ -63,7 +65,9 @@ fun SettingsScreen(
 @Composable
 private fun SettingsRoot(
     activity: FragmentActivity,
+    vault: Vault,
     vm: WalletViewModel,
+    address: String,
     onPage: (SettingsPage) -> Unit,
     onReveal: () -> Unit,
     onWipe: () -> Unit
@@ -72,6 +76,7 @@ private fun SettingsRoot(
     val sessions by WcService.sessions.collectAsState()
     var reownProjectId by remember { mutableStateOf(WcService.projectId(activity)) }
     var lockDialog by remember { mutableStateOf(false) }
+    var delegation by remember { mutableStateOf(false) }
     var keyDialog by remember { mutableStateOf(false) }
     var reownDialog by remember { mutableStateOf(false) }
     var alchemyKey by remember { mutableStateOf(SimKey.get(ctx)) }
@@ -90,6 +95,7 @@ private fun SettingsRoot(
         SectionLabel("Wallets")
         Spacer(Modifier.height(6.dp))
         SettingsRow("Manage wallets", "${vm.wallets.size}") { onPage(SettingsPage.Wallets) }
+        SettingsRow("Smart account (EIP-7702)", "Change") { if (chain != null) delegation = true }
         Hairline()
         Spacer(Modifier.height(28.dp))
         SectionLabel("Networks")
@@ -177,6 +183,9 @@ private fun SettingsRoot(
     if (keyDialog) PriceKeyDialog(vm) { keyDialog = false }
     if (reownDialog) ReownDialog(activity) { reownDialog = false }
     if (alchemyDialog) AlchemyDialog(ctx) { alchemyDialog = false }
+    if (delegation && chain != null) {
+        DelegationDialog(activity, vault, vm, chain, address) { delegation = false }
+    }
 }
 
 @Composable
