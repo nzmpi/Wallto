@@ -56,6 +56,7 @@ fun BatchDialog(
     var basePlan by remember { mutableStateOf<TxPlan?>(null) }
     var feeEdit by remember { mutableStateOf(false) }
     var nonceEdit by remember { mutableStateOf(false) }
+    var gasEdit by remember { mutableStateOf(false) }
     var hash by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf("Pending...") }
     var busy by remember { mutableStateOf(false) }
@@ -240,7 +241,15 @@ fun BatchDialog(
                         Spacer(Modifier.width(10.dp))
                         Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
                     }
-                    TxRow("Gas limit", p.gasLimit.toString())
+                    Row(
+                        Modifier.fillMaxWidth().clickable(enabled = !busy) { gasEdit = true }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                        Text(p.gasLimit.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.width(10.dp))
+                        Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
+                    }
                     status?.delegate?.let {
                         TxLabel("Delegated to", top = 12)
                         TxMono(it)
@@ -321,6 +330,14 @@ fun BatchDialog(
     }
     if (nonceEdit && p != null) {
         TxNonceDialog(current = p.nonce, onSave = { plan = p.copy(nonce = it); nonceEdit = false }, onDismiss = { nonceEdit = false })
+    }
+    if (gasEdit && p != null && base != null) {
+        TxGasDialog(
+            current = p.gasLimit,
+            base = base.gasLimit,
+            onSave = { plan = p.copy(gasLimit = it); gasEdit = false },
+            onDismiss = { gasEdit = false }
+        )
     }
 }
 

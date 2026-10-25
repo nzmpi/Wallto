@@ -213,6 +213,7 @@ fun WcRequestScreen(
     var siteInfo by remember { mutableStateOf(false) }
     var feeEdit by remember { mutableStateOf(false) }
     var nonceEdit by remember { mutableStateOf(false) }
+    var gasEdit by remember { mutableStateOf(false) }
 
     if (parsed is Parsed.Tx && chain != null && signerNow != null) {
         LaunchedEffect(item) {
@@ -479,9 +480,14 @@ fun WcRequestScreen(
                                                 Spacer(Modifier.width(10.dp))
                                                 Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
                                             }
-                                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                            Row(
+                                                Modifier.fillMaxWidth().clickable(enabled = !busy) { gasEdit = true }.padding(vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
                                                 Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                                                Text(p.gasLimit.toString(), fontSize = 15.sp)
+                                                Text(p.gasLimit.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                                Spacer(Modifier.width(10.dp))
+                                                Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
                                             }
                                             summary?.exact?.let {
                                                 TxLabel("Exact amount", top = 12)
@@ -561,6 +567,14 @@ fun WcRequestScreen(
             current = p.nonce,
             onSave = { plan = p.copy(nonce = it); nonceEdit = false },
             onDismiss = { nonceEdit = false }
+        )
+    }
+    if (gasEdit && p != null && base != null) {
+        TxGasDialog(
+            current = p.gasLimit,
+            base = base.gasLimit,
+            onSave = { plan = p.copy(gasLimit = it); gasEdit = false },
+            onDismiss = { gasEdit = false }
         )
     }
 }
