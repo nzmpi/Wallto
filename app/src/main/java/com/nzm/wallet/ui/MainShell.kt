@@ -141,7 +141,7 @@ fun MainShell(
                         HomeTab.Connect -> Unit // an action, not a tab
                         HomeTab.Contracts -> ContractsScreen(activity, vault, vm, address) { chainMenuOpen = true }
                         HomeTab.Settings -> SettingsScreen(
-                            activity, vm, address, settingsPage,
+                            activity, vault, vm, address, settingsPage,
                             onPage = { settingsPage = it },
                             onReveal = onReveal,
                             onWipe = onWipe
