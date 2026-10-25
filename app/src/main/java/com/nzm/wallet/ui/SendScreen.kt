@@ -75,6 +75,7 @@ fun SendScreen(
     var basePlan by remember { mutableStateOf<TxPlan?>(null) }   // as built, for Reset
     var feeEdit by remember { mutableStateOf(false) }
     var nonceEdit by remember { mutableStateOf(false) }
+    var gasEdit by remember { mutableStateOf(false) }
     var advanced by remember { mutableStateOf(false) }
     var hash by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf("Pending...") }
@@ -657,16 +658,14 @@ fun SendScreen(
                                                 tint = Dim.Mid
                                             )
                                         }
-                                        Row(Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp)) {
-                                            Text(
-                                                "Gas limit",
-                                                fontSize = 15.sp,
-                                                color = Dim.Mid,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            Text(p.gasLimit.toString(), fontSize = 15.sp)
+                                        Row(
+                                            Modifier.fillMaxWidth().clickable(enabled = !busy) { gasEdit = true }.padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                                            Text(p.gasLimit.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                            Spacer(Modifier.width(10.dp))
+                                            Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
                                         }
                                         TxLabel("Exact amount", top = 12)
                                         TxMono(
@@ -1113,6 +1112,14 @@ fun SendScreen(
             current = ep.nonce,
             onSave = { plan = ep.copy(nonce = it); nonceEdit = false },
             onDismiss = { nonceEdit = false }
+        )
+    }
+    if (gasEdit && ep != null && eb != null) {
+        TxGasDialog(
+            current = ep.gasLimit,
+            base = eb.gasLimit,
+            onSave = { plan = ep.copy(gasLimit = it); gasEdit = false },
+            onDismiss = { gasEdit = false }
         )
     }
 

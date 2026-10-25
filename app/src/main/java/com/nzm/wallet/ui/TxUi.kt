@@ -211,3 +211,48 @@ internal fun TxNonceDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
+
+@Composable
+internal fun TxGasDialog(current: BigInteger, base: BigInteger, onSave: (BigInteger) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(current.toString()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Gas limit") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Most gas the transaction may use. Estimated: $base. Too low and the transaction fails and still costs a fee.",
+                    fontSize = 14.sp
+                )
+                OutlinedTextField(
+                    text, { text = it.filter(Char::isDigit) }, singleLine = true,
+                    shape = RoundedCornerShape(20.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                val n = text.toBigIntegerOrNull()
+                if (n != null && n < base) {
+                    Text("Below the estimate. It will probably fail.", color = Dim.Danger, fontSize = 14.sp)
+                }
+                error?.let { Text(it, color = Dim.Danger, fontSize = 14.sp) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val n = text.toBigIntegerOrNull()
+                when {
+                    n == null -> error = "Enter a number"
+                    n < BigInteger.valueOf(21_000) -> error = "Minimum is 21000"
+                    else -> onSave(n)
+                }
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            Row {
+                if (current != base) TextButton(onClick = { onSave(base) }) { Text("Reset") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
+    )
+}
