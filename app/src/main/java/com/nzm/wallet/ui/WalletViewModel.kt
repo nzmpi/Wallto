@@ -104,6 +104,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var lockAfterMs by mutableLongStateOf(prefs.getLong("lock_after_ms", 60_000L))
         private set
+    var backgroundedAt = 0L
 
     private var refreshJob: Job? = null
     private var refreshSeq = 0

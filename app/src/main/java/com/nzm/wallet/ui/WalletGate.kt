@@ -176,16 +176,17 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
 
     // lock after the configured time in background
     DisposableEffect(activity) {
-        var stoppedAt = 0L
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> stoppedAt = SystemClock.elapsedRealtime()
+                Lifecycle.Event.ON_STOP -> vm.backgroundedAt = SystemClock.elapsedRealtime()
                 Lifecycle.Event.ON_START -> {
-                    if (stoppedAt != 0L &&
-                        SystemClock.elapsedRealtime() - stoppedAt > vm.lockAfterMs &&
+                    val t = vm.backgroundedAt
+                    if (t != 0L &&
+                        vm.address != null &&
+                        SystemClock.elapsedRealtime() - t > vm.lockAfterMs &&
                         vault.exists()
                     ) lock()
-                    stoppedAt = 0L
+                    vm.backgroundedAt = 0L
                 }
                 else -> {}
             }
