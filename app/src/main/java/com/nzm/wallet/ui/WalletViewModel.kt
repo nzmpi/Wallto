@@ -198,6 +198,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun hasAddress(addr: String) = wallets.any { it.address.equals(addr, ignoreCase = true) }
+    fun hasSentTo(addr: String) = allHistory.any { it.recipient.equals(addr, ignoreCase = true) }
 
     /** After Vault.save of a new wallet: list it, make it the active one, show it. */
     suspend fun addWallet(vault: Vault, id: String, addr: String) {
