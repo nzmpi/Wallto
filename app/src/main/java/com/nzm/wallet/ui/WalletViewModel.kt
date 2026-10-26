@@ -105,6 +105,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     var lockAfterMs by mutableLongStateOf(prefs.getLong("lock_after_ms", 60_000L))
         private set
     var backgroundedAt = 0L
+    var hideBalances by mutableStateOf(prefs.getBoolean("hide_balances", false))
+        private set
 
     private var refreshJob: Job? = null
     private var refreshSeq = 0
@@ -158,6 +160,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 // network problem: keep what is shown
             }
         }
+    }
+
+    fun toggleHideBalances() {
+        hideBalances = !hideBalances
+        prefs.edit { putBoolean("hide_balances", hideBalances) }
     }
 
     init {

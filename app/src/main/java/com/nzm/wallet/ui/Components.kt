@@ -240,6 +240,24 @@ fun RefreshButton(spinning: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+fun HideBalancesButton(hidden: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            if (hidden) Ic.EyeOff else Ic.Eye,
+            if (hidden) "Show balances" else "Hide balances",
+            Modifier.size(22.dp),
+            tint = Dim.Mid
+        )
+    }
+}
+
+@Composable
 fun AssetRow(
     initial: String,
     icon: (@Composable () -> Unit)? = null,

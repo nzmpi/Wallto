@@ -149,4 +149,30 @@ object Ic {
         moveTo(4f, 12f); horizontalLineToRelative(0.01f)
         moveTo(20f, 12f); horizontalLineToRelative(0.01f)
     }
+    val Eye = icon("eye") {
+        moveTo(2f, 12f)
+        curveTo(5f, 6.5f, 8.5f, 5f, 12f, 5f)
+        curveTo(15.5f, 5f, 19f, 6.5f, 22f, 12f)
+        curveTo(19f, 17.5f, 15.5f, 19f, 12f, 19f)
+        curveTo(8.5f, 19f, 5f, 17.5f, 2f, 12f)
+        close()
+        moveTo(15f, 12f)
+        arcTo(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 9f, y1 = 12f)
+        arcTo(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 15f, y1 = 12f)
+        close()
+    }
+    val EyeOff = icon("eyeOff") {
+        moveTo(2f, 12f)
+        curveTo(5f, 6.5f, 8.5f, 5f, 12f, 5f)
+        curveTo(15.5f, 5f, 19f, 6.5f, 22f, 12f)
+        curveTo(19f, 17.5f, 15.5f, 19f, 12f, 19f)
+        curveTo(8.5f, 19f, 5f, 17.5f, 2f, 12f)
+        close()
+        moveTo(15f, 12f)
+        arcTo(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 9f, y1 = 12f)
+        arcTo(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 15f, y1 = 12f)
+        close()
+        moveTo(4f, 4f)
+        lineTo(20f, 20f)
+    }
 }
