@@ -84,6 +84,7 @@ dependencies {
     implementation(libs.reown.android.core)
     implementation(libs.reown.walletkit)
     implementation(libs.play.services.code.scanner)
+    implementation(libs.core)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

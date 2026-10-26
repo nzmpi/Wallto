@@ -27,6 +27,7 @@ fun AssetsScreen(
     onChainMenu: () -> Unit
 ) {
     val chain = vm.selected ?: return
+    var qrOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(address, chain.chainId, chain.rpcUrl, vm.tokens) { vm.refresh() }
     LaunchedEffect(address, vm.ensRpc) { vm.refreshEns() }
@@ -40,18 +41,20 @@ fun AssetsScreen(
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         item {
-            val maxChipWidth = with(LocalDensity.current) {
+            val maxName = with(LocalDensity.current) {
                 LocalWindowInfo.current.containerSize.width.toDp()
-            } * 40 / 100
+            } * 0.35f
             Row(
                 Modifier.fillMaxWidth().padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                WalletChip(vm.walletLabel(address), Modifier.widthIn(max = maxChipWidth), onWalletMenu)
+                WalletChip(vm.walletLabel(address), Modifier.widthIn(max = maxName).offset((-6).dp), onWalletMenu)
+                Spacer(Modifier.width(1.dp))
                 CopyAddressButton(address)
+                Spacer(Modifier.width(1.dp))
+                QrButton { qrOpen = true }
                 Spacer(Modifier.weight(1f))
-                ChainChip(chain, Modifier.widthIn(max = maxChipWidth), onChainMenu)
+                ChainChip(chain, onChainMenu)
             }
         }
         item {
@@ -136,4 +139,5 @@ fun AssetsScreen(
             onSend = { info = null; onSend(t) }
         ) { info = null }
     }
+    if (qrOpen) QrDialog(vm.walletLabel(address), address) { qrOpen = false }
 }

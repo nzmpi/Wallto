@@ -375,7 +375,7 @@ fun SendScreen(
                         ) {
                             Icon(Ic.ChevronLeft, "Back", Modifier.size(24.dp))
                         }
-                        ChainChip(chain, Modifier) { if (!busy && batchItems.isEmpty()) chainMenu = true }
+                        ChainChip(chain) { if (!busy && batchItems.isEmpty()) chainMenu = true }
                     }
 
                     when {
