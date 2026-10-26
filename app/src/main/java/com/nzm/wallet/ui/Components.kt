@@ -66,7 +66,7 @@ fun TabHeader(title: String, chain: Chain?, onChainMenu: () -> Unit) {
     ) {
         ScreenTitle(title)
         if (chain != null) {
-            ChainChip(chain, Modifier, onChainMenu)
+            ChainChip(chain, onChainMenu)
         }
     }
 }
@@ -132,9 +132,9 @@ fun OutlineButton(
 }
 
 @Composable
-fun ChainChip(chain: Chain, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun ChainChip(chain: Chain, onClick: () -> Unit) {
     Row(
-        modifier
+        Modifier
             .height(44.dp)
             .clip(RoundedCornerShape(22.dp))
             .clickable(role = Role.Button, onClick = onClick)
@@ -192,8 +192,7 @@ fun CopyAddressButton(address: String) {
     }
     Box(
         Modifier
-            .size(44.dp)
-            .offset((-12).dp)
+            .size(30.dp)
             .clip(RoundedCornerShape(22.dp))
             .clickable(role = Role.Button) {
                 context.getSystemService(ClipboardManager::class.java)
@@ -208,6 +207,19 @@ fun CopyAddressButton(address: String) {
             Modifier.size(18.dp),
             tint = if (copied) Dim.Accent else Dim.Mid
         )
+    }
+}
+
+@Composable
+fun QrButton(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(30.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Ic.Qr, "Show QR code", Modifier.size(18.dp), tint = Dim.Mid)
     }
 }
 

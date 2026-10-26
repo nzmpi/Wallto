@@ -136,4 +136,17 @@ object Ic {
         moveTo(4f, 22f)
         horizontalLineTo(20f)
     }
+    val Qr = icon("qr") {
+        moveTo(4f, 4f); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
+        moveTo(15f, 4f); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
+        moveTo(4f, 15f); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
+        moveTo(15f, 15f); horizontalLineToRelative(2f); verticalLineToRelative(2f)
+        moveTo(20f, 15f); verticalLineToRelative(0.01f)
+        moveTo(15f, 20f); horizontalLineToRelative(0.01f)
+        moveTo(20f, 20f); horizontalLineToRelative(0.01f)
+        moveTo(12f, 4f); horizontalLineToRelative(0.01f)
+        moveTo(12f, 12f); horizontalLineToRelative(0.01f)
+        moveTo(4f, 12f); horizontalLineToRelative(0.01f)
+        moveTo(20f, 12f); horizontalLineToRelative(0.01f)
+    }
 }
