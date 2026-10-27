@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import com.nzm.wallet.abi.SelectorLookup
 import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.chain.Token
@@ -192,6 +193,24 @@ fun WcBatchScreen(
         }
     }
 
+    var guesses by remember(item) { mutableStateOf<Map<Int, SelectorLookup.Guess>>(emptyMap()) }
+    if (parsed is Req.Ok) {
+        LaunchedEffect(item) {
+            val found = HashMap<Int, SelectorLookup.Guess>()
+            parsed.items.forEachIndexed { i, b ->
+                if (b.data.isNotEmpty() && b.line.startsWith("Call 0x")) {
+                    try {
+                        SelectorLookup.guess(Numeric.toHexString(b.data))?.let { found[i] = it }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            guesses = found
+        }
+    }
+
     fun reject() {
         if (busy) return
         val b = parsed as? Req.Bad
@@ -287,15 +306,23 @@ fun WcBatchScreen(
 
                 parsed.items.forEachIndexed { i, b ->
                     TxCard {
+                        val g = guesses[i]
                         Text("Call ${i + 1}", fontSize = 13.sp, color = Dim.Mid)
-                        Text(b.line, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            g?.let { "Call " + it.signature.substringBefore('(') } ?: b.line,
+                            fontSize = 16.sp, fontWeight = FontWeight.SemiBold
+                        )
                         Spacer(Modifier.height(6.dp))
                         val target = b.recipient ?: b.to
                         TxPartyRow(b.link.replaceFirstChar { ch -> ch.uppercase() }, rememberParty(vm, target))
                         if (b.recipient != null) TxRow("Token contract", shortAddress(b.to))
                         if (b.value.signum() > 0 && b.data.isNotEmpty()) TxRow("Value", fmt(c, b.value))
-                        b.warnings.forEach { w ->
+                        b.warnings.filter { !(g != null && it.startsWith("Unknown call")) }.forEach { w ->
                             Text("WARNING: $w", fontSize = 13.sp, color = Dim.Danger, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        if (g != null) {
+                            Spacer(Modifier.height(10.dp))
+                            GuessInfo(g)
                         }
                     }
                 }
