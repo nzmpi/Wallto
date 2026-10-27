@@ -105,6 +105,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     var lockAfterMs by mutableLongStateOf(prefs.getLong("lock_after_ms", 60_000L))
         private set
     var backgroundedAt = 0L
+    var hideBalances by mutableStateOf(prefs.getBoolean("hide_balances", false))
+        private set
 
     private var refreshJob: Job? = null
     private var refreshSeq = 0
@@ -160,6 +162,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun toggleHideBalances() {
+        hideBalances = !hideBalances
+        prefs.edit { putBoolean("hide_balances", hideBalances) }
+    }
+
     init {
         viewModelScope.launch { chainRepo.seedDefaults() }
         viewModelScope.launch { chainRepo.chains.collect { chains = it } }
@@ -191,6 +198,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun hasAddress(addr: String) = wallets.any { it.address.equals(addr, ignoreCase = true) }
+    fun hasSentTo(addr: String) = allHistory.any { it.recipient.equals(addr, ignoreCase = true) }
 
     /** After Vault.save of a new wallet: list it, make it the active one, show it. */
     suspend fun addWallet(vault: Vault, id: String, addr: String) {

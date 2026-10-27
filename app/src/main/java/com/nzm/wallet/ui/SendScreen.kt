@@ -112,6 +112,12 @@ fun SendScreen(
     }
     val remaining: BigInteger? = balance?.let { (it - committed()).max(BigInteger.ZERO) }
 
+    fun isFirstTime(a: String?): Boolean =
+        a != null &&
+                vm.contacts.none { it.address.equals(a, true) } &&
+                !vm.hasAddress(a) &&
+                !vm.hasSentTo(a)
+
     // chain or token changed: the old amount no longer applies
     LaunchedEffect(chain.chainId, tokenAddr) { amount = ""; error = null }
 
@@ -506,6 +512,12 @@ fun SendScreen(
                                             ensName,
                                             shortAddress(dest)
                                         ) else rememberParty(vm, dest)
+                                    )
+                                }
+                                if (isFirstTime(dest)) {
+                                    Text(
+                                        "First time sending to this address. Check every character before you sign.",
+                                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Accent
                                     )
                                 }
                                 if (ensName != null && chain.chainId != 1L) {
@@ -957,6 +969,13 @@ fun SendScreen(
                                         "Saved as ${it.name}",
                                         fontSize = 13.sp,
                                         color = Dim.Accent,
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    )
+                                }
+                                if (saved == null && isFirstTime(target)) {
+                                    Text(
+                                        "First time sending to this address",
+                                        fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger,
                                         modifier = Modifier.padding(top = 8.dp)
                                     )
                                 }

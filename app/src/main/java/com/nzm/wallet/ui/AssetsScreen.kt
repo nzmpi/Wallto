@@ -28,6 +28,8 @@ fun AssetsScreen(
 ) {
     val chain = vm.selected ?: return
     var qrOpen by remember { mutableStateOf(false) }
+    val hide = vm.hideBalances
+    val mask = "****"
 
     LaunchedEffect(address, chain.chainId, chain.rpcUrl, vm.tokens) { vm.refresh() }
     LaunchedEffect(address, vm.ensRpc) { vm.refreshEns() }
@@ -59,21 +61,24 @@ fun AssetsScreen(
         }
         item {
             Spacer(Modifier.height(32.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    vm.amountText(vm.nativeBalance, chain.decimals),
-                    fontSize = 48.sp,
-                    lineHeight = 52.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = (-1.4).sp,
-                    maxLines = 1,
-                    modifier = Modifier.alignByBaseline()
-                )
-                Text(chain.symbol, fontSize = 20.sp, color = Dim.Mid, modifier = Modifier.alignByBaseline())
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        if (hide) mask else vm.amountText(vm.nativeBalance, chain.decimals),
+                        fontSize = 48.sp,
+                        lineHeight = 52.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-1.4).sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false).alignByBaseline()
+                    )
+                    Text(chain.symbol, fontSize = 20.sp, color = Dim.Mid, modifier = Modifier.alignByBaseline())
+                }
+                HideBalancesButton(hide) { vm.toggleHideBalances() }
             }
             val sub = vm.fiat(null, vm.nativeBalance)
             if (sub != null) {
-                Text(sub, fontSize = 16.sp, color = Dim.Mid, modifier = Modifier.padding(top = 10.dp))
+                Text(if (hide) mask else sub, fontSize = 16.sp, color = Dim.Mid, modifier = Modifier.padding(top = 10.dp))
             }
             vm.balanceError?.let {
                 Text(
@@ -102,8 +107,8 @@ fun AssetsScreen(
                 icon = { AssetIcon(chain, null, 40.dp, chain.symbol.take(1).uppercase()) },
                 title = chain.symbol,
                 subtitle = chain.name,
-                amount = vm.amountText(vm.nativeBalance, chain.decimals),
-                fiat = vm.fiat(null, vm.nativeBalance),
+                amount = if (hide) mask else vm.amountText(vm.nativeBalance, chain.decimals),
+                fiat = vm.fiat(null, vm.nativeBalance)?.let { if (hide) mask else it },
                 native = true
             )
         }
@@ -115,8 +120,8 @@ fun AssetsScreen(
                 icon = { AssetIcon(chain, t, 40.dp, t.symbol.take(1).uppercase()) },
                 title = t.symbol,
                 subtitle = t.name,
-                amount = if (known) vm.amountText(raw, t.decimals) else "…",
-                fiat = vm.fiat(t, raw),
+                amount = if (hide) mask else if (known) vm.amountText(raw, t.decimals) else "…",
+                fiat = vm.fiat(t, raw)?.let { if (hide) mask else it },
                 onClick = { info = t }
             )
         }
