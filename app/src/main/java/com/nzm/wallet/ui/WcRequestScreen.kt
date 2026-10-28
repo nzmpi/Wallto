@@ -18,6 +18,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
+import com.nzm.wallet.abi.SelectorLookup
 import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.chain.Rpc
 import com.nzm.wallet.chain.SendTx
@@ -240,6 +241,19 @@ fun WcRequestScreen(
     val tokens = if (chain != null && chain.chainId == vm.selected?.chainId) vm.tokens else emptyList()
     val summary = if (parsed is Parsed.Tx && chain != null) analyze(parsed.t, chain, tokens) else null
 
+    var guess by remember(item) { mutableStateOf<SelectorLookup.Guess?>(null) }
+    if (parsed is Parsed.Tx && summary?.verb == "Contract call" && parsed.t.data.isNotEmpty()) {
+        LaunchedEffect(item) {
+            guess = try {
+                SelectorLookup.guess(parsed.t.data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     val title = when (parsed) {
         is Parsed.Msg -> "Sign message"
         is Parsed.Typed -> "Sign typed data"
@@ -417,6 +431,7 @@ fun WcRequestScreen(
                                     Text(desc, color = if (danger) Dim.Danger else Dim.Ink, fontSize = 14.sp)
                                 }
                             }
+                            guess?.let { GuessCard(it) }
                         }
                         else -> {}
                     }
