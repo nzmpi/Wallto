@@ -1,11 +1,25 @@
 package com.nzm.wallet.ui
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -14,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
-import com.nzm.wallet.chain.Token
+import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.ui.theme.Dim
 
 @Composable
@@ -41,16 +55,28 @@ fun AssetsScreen(
     val shownTokens = vm.tokens.filter { vm.tokenBalances[it.address]?.signum() != 0 }
     val hiddenCount = vm.tokens.size - shownTokens.size
 
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+    LazyColumn(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp)
+    ) {
         item {
             val maxName = with(LocalDensity.current) {
                 LocalWindowInfo.current.containerSize.width.toDp()
             } * 0.35f
             Row(
-                Modifier.fillMaxWidth().padding(top = 12.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                WalletChip(vm.walletLabel(address), Modifier.widthIn(max = maxName).offset((-6).dp), onWalletMenu)
+                WalletChip(
+                    vm.walletLabel(address),
+                    Modifier
+                        .widthIn(max = maxName)
+                        .offset((-6).dp),
+                    onWalletMenu
+                )
                 Spacer(Modifier.width(1.dp))
                 CopyAddressButton(address)
                 Spacer(Modifier.width(1.dp))
@@ -70,15 +96,27 @@ fun AssetsScreen(
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = (-1.4).sp,
                         maxLines = 1,
-                        modifier = Modifier.weight(1f, fill = false).alignByBaseline()
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .alignByBaseline()
                     )
-                    Text(chain.symbol, fontSize = 20.sp, color = Dim.Mid, modifier = Modifier.alignByBaseline())
+                    Text(
+                        chain.symbol,
+                        fontSize = 20.sp,
+                        color = Dim.Mid,
+                        modifier = Modifier.alignByBaseline()
+                    )
                 }
                 HideBalancesButton(hide) { vm.toggleHideBalances() }
             }
             val sub = vm.fiat(null, vm.nativeBalance)
             if (sub != null) {
-                Text(if (hide) mask else sub, fontSize = 16.sp, color = Dim.Mid, modifier = Modifier.padding(top = 10.dp))
+                Text(
+                    if (hide) mask else sub,
+                    fontSize = 16.sp,
+                    color = Dim.Mid,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
             }
             vm.balanceError?.let {
                 Text(
@@ -91,13 +129,25 @@ fun AssetsScreen(
         }
         item {
             Row(
-                Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 4.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 28.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Assets", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(
+                    "Assets",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
                 RefreshButton(vm.loading) { vm.refresh(force = true) }
                 TextButton(onClick = { addToken = true }) {
-                    Text("Add token", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Accent)
+                    Text(
+                        "Add token",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Dim.Accent
+                    )
                 }
             }
         }

@@ -1,4 +1,4 @@
-package com.nzm.wallet.chain
+package com.nzm.wallet.dbs
 
 import android.content.Context
 import kotlinx.coroutines.flow.Flow

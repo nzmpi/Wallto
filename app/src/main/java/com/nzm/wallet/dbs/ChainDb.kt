@@ -1,4 +1,4 @@
-package com.nzm.wallet.chain
+package com.nzm.wallet.dbs
 
 import android.content.Context
 import androidx.room.*
@@ -119,9 +119,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        @Volatile private var instance: AppDatabase? = null
+        @Volatile
+        private var instance: AppDatabase? = null
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
-            instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "wallet.db")
+            instance ?: Room.databaseBuilder(
+                context.applicationContext,
+                AppDatabase::class.java,
+                "wallet.db"
+            )
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build().also { instance = it }
         }

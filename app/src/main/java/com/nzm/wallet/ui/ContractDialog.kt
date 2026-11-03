@@ -29,20 +29,38 @@ import com.nzm.wallet.abi.FunctionSig
 import com.nzm.wallet.abi.Sourcify
 import com.nzm.wallet.abi.abiFunctions
 import com.nzm.wallet.chain.*
+import com.nzm.wallet.chain.Rpc.ethCall
+import com.nzm.wallet.chain.Rpc.isContract
+import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.storage.SavedContract
 import com.nzm.wallet.storage.SavedContracts
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.SHAPE
+import com.nzm.wallet.utils.Helpers.fmt
+import com.nzm.wallet.utils.Helpers.isValidAddress
+import com.nzm.wallet.utils.Helpers.parseAmount
+import com.nzm.wallet.utils.Helpers.shortAddress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
 import java.math.BigInteger
 
-private class Prepared(val to: String, val sig: FunctionSig, val values: List<Any>, val data: ByteArray)
+private class Prepared(
+    val to: String,
+    val sig: FunctionSig,
+    val values: List<Any>,
+    val data: ByteArray
+)
 
-private suspend fun prepare(chain: Chain, addr: String, sigText: String, argsText: String): Prepared {
-    require(SendTx.isValidAddress(addr.trim())) { "Invalid contract address or checksum" }
+private suspend fun prepare(
+    chain: Chain,
+    addr: String,
+    sigText: String,
+    argsText: String
+): Prepared {
+    require(isValidAddress(addr.trim())) { "Invalid contract address or checksum" }
     val to = Keys.toChecksumAddress(addr.trim())
     val sig = AbiCodec.parseSignature(sigText)
     val lines = if (sig.inputs.isEmpty()) emptyList()
@@ -57,11 +75,9 @@ private suspend fun prepare(chain: Chain, addr: String, sigText: String, argsTex
             throw IllegalArgumentException("Argument ${i + 1} (${t.canonical}): ${e.message}")
         }
     }
-    require(Erc20.isContract(chain.rpcUrl, to)) { "No contract at this address on this chain" }
+    require(isContract(chain.rpcUrl, to)) { "No contract at this address on this chain" }
     return Prepared(to, sig, values, AbiCodec.encodeCall(sig, values))
 }
-
-private val FIELD_SHAPE = RoundedCornerShape(20.dp)
 
 @Composable
 fun ContractDialog(
@@ -100,8 +116,6 @@ fun ContractDialog(
     var listOpen by remember { mutableStateOf(true) }
     val focus = LocalFocusManager.current
 
-    fun fmt(v: BigInteger) = "${Rpc.formatUnits(v, chain.decimals, chain.decimals)} ${chain.symbol}"
-
     fun launchSafe(block: suspend () -> Unit) {
         busy = true
         error = null
@@ -137,8 +151,12 @@ fun ContractDialog(
     val useAbi = !manual && fns != null
     val effSig = if (useAbi) fn?.sigText ?: "" else sigText
     val effArgs = if (useAbi) argVals.joinToString("\n") else argsText
-    val parsed = remember(effSig) { if (effSig.isBlank()) null else runCatching { AbiCodec.parseSignature(effSig) } }
-    val validAddr = SendTx.isValidAddress(contract.trim())
+    val parsed = remember(effSig) {
+        if (effSig.isBlank()) null else runCatching {
+            AbiCodec.parseSignature(effSig)
+        }
+    }
+    val validAddr = isValidAddress(contract.trim())
     val savedNow = if (validAddr) SavedContracts.find(chain.chainId, contract) else null
     val canGo = !busy && validAddr && effSig.isNotBlank()
 
@@ -151,7 +169,10 @@ fun ContractDialog(
         when {
             busy -> {}
             h != null -> onClose(true)
-            p != null -> { plan = null; prepared = null; basePlan = null }
+            p != null -> {
+                plan = null; prepared = null; basePlan = null
+            }
+
             else -> onClose(false)
         }
     }
@@ -160,7 +181,7 @@ fun ContractDialog(
         readResult = null
         val pr = prepare(chain, contract, effSig, effArgs)
         if (!write) {
-            val raw = ContractCall.read(chain.rpcUrl, from, pr.to, pr.data)
+            val raw = ethCall(chain.rpcUrl, from, pr.to, data = pr.data)
             readResult = if (pr.sig.outputs.isEmpty()) {
                 listOf("Raw output: ${Numeric.toHexString(raw)}")
             } else {
@@ -168,7 +189,8 @@ fun ContractDialog(
                     .mapIndexed { i, v -> "${i + 1}. ${pr.sig.outputs[i].canonical}: $v" }
             }
         } else {
-            val value = if (valueText.isBlank()) BigInteger.ZERO else SendTx.parseAmount(valueText, chain.decimals)
+            val value =
+                if (valueText.isBlank()) BigInteger.ZERO else parseAmount(valueText, chain.decimals)
             val built = SendTx.plan(chain, from, pr.to, value, Numeric.toHexString(pr.data))
             prepared = pr
             basePlan = built
@@ -183,21 +205,35 @@ fun ContractDialog(
                 h != null -> {
                     if (chain.explorerUrl != null) {
                         OutlineButton("Explorer", {
-                            activity.startActivity(Intent(Intent.ACTION_VIEW, "${chain.explorerUrl}/tx/$h".toUri()))
+                            activity.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    "${chain.explorerUrl}/tx/$h".toUri()
+                                )
+                            )
                         }, Modifier.weight(1f))
                     }
                     PrimaryButton("Done", { onClose(true) }, Modifier.weight(1f))
                 }
+
                 p != null && prep != null -> {
                     OutlineButton("Back", { goBack() }, Modifier.weight(1f))
                     PrimaryButton(
                         if (busy) "Working…" else "Sign & send",
                         onClick = {
-                            launchSafe { hash = vault.withCredentials(activity) { creds -> SendTx.signAndSend(p, creds) } }
+                            launchSafe {
+                                hash = vault.withCredentials(activity) { creds ->
+                                    SendTx.signAndSend(
+                                        p,
+                                        creds
+                                    )
+                                }
+                            }
                         },
                         enabled = !busy, modifier = Modifier.weight(1f)
                     )
                 }
+
                 else -> {
                     OutlineButton("Close", { goBack() }, Modifier.weight(1f))
                     PrimaryButton(
@@ -238,7 +274,17 @@ fun ContractDialog(
             p != null && prep != null -> {
                 PageHeader("Review") { goBack() }
                 val name = prep.sig.signature.substringBefore('(')
-                TxAmount("Calling", name, if (p.value.signum() > 0) "with ${fmt(p.value)}" else null)
+                TxAmount(
+                    "Calling",
+                    name,
+                    if (p.value.signum() > 0) "with ${
+                        fmt(
+                            p.value,
+                            chain,
+                            chain.decimals
+                        )
+                    }" else null
+                )
                 TxCard {
                     TxPartyRow("From", rememberParty(vm, p.from))
                     TxLine()
@@ -247,11 +293,19 @@ fun ContractDialog(
                 TxCard {
                     TxLabel("Function", top = 4)
                     Text(prep.sig.signature, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Selector 0x${Numeric.toHexStringNoPrefix(prep.sig.selector)}", fontSize = 12.sp, color = Dim.Mid)
+                    Text(
+                        "Selector 0x${Numeric.toHexStringNoPrefix(prep.sig.selector)}",
+                        fontSize = 12.sp,
+                        color = Dim.Mid
+                    )
                     prep.values.forEachIndexed { i, v ->
                         val t = prep.sig.inputs[i]
                         Spacer(Modifier.height(10.dp))
-                        Text("Argument ${i + 1} (${t.canonical})", fontSize = 13.sp, color = Dim.Mid)
+                        Text(
+                            "Argument ${i + 1} (${t.canonical})",
+                            fontSize = 13.sp,
+                            color = Dim.Mid
+                        )
                         TxMono(AbiCodec.display(t, v))
                     }
                     Spacer(Modifier.height(4.dp))
@@ -260,8 +314,18 @@ fun ContractDialog(
                     Text("WARNING: $it", fontSize = 14.sp, color = Dim.Danger)
                 }
                 TxCard {
-                    Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Network", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Network",
+                            fontSize = 15.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.weight(1f)
+                        )
                         Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
                     }
@@ -270,37 +334,76 @@ fun ContractDialog(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Max fee", fontSize = 15.sp, color = Dim.Mid)
-                            if (base != null && p.fee != base.fee) Text("Edited", fontSize = 12.sp, color = Dim.Accent)
+                            if (base != null && p.fee != base.fee) Text(
+                                "Edited",
+                                fontSize = 12.sp,
+                                color = Dim.Accent
+                            )
                         }
                         val fiat = vm.fiat(null, p.maxFeeWei)
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(fiat ?: fmt(p.maxFeeWei), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            if (fiat != null) Text(fmt(p.maxFeeWei), fontSize = 12.sp, color = Dim.Mid)
+                            Text(
+                                fiat ?: fmt(
+                                    p.maxFeeWei,
+                                    chain,
+                                    chain.decimals
+                                ), fontSize = 16.sp, fontWeight = FontWeight.SemiBold
+                            )
+                            if (fiat != null) Text(
+                                fmt(
+                                    p.maxFeeWei,
+                                    chain,
+                                    chain.decimals
+                                ), fontSize = 12.sp, color = Dim.Mid
+                            )
                         }
                         Spacer(Modifier.width(10.dp))
                         Icon(Ic.Edit, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
                     }
                 }
                 TxCard {
-                    TxRow("Max total", fmt(p.maxTotalWei))
+                    TxRow(
+                        "Max total",
+                        fmt(p.maxTotalWei, chain, chain.decimals)
+                    )
                 }
                 SimulationCard(vm, chain, p)
                 TxAdvanced {
                     Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !busy) { nonceEdit = true }.padding(vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !busy) { nonceEdit = true }
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Nonce", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                        Text(
+                            "Nonce",
+                            fontSize = 15.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.weight(1f)
+                        )
                         Text(p.nonce.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.width(10.dp))
                         Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
                     }
                     Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !busy) { gasEdit = true }.padding(vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !busy) { gasEdit = true }
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                        Text(p.gasLimit.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Gas limit",
+                            fontSize = 15.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            p.gasLimit.toString(),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         Spacer(Modifier.width(10.dp))
                         Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
                     }
@@ -316,10 +419,19 @@ fun ContractDialog(
             // ---------- input ----------
             else -> {
                 PageHeader("Contract call") { goBack() }
-
                 TxCard {
-                    Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Network", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Network",
+                            fontSize = 15.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.weight(1f)
+                        )
                         Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
                     }
@@ -327,8 +439,12 @@ fun ContractDialog(
 
                 // read / write
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ModePill("Read", !write) { write = false; fn = null; listOpen = true; readResult = null }
-                    ModePill("Write", write) { write = true; fn = null; listOpen = true; readResult = null }
+                    ModePill("Read", !write) {
+                        write = false; fn = null; listOpen = true; readResult = null
+                    }
+                    ModePill("Write", write) {
+                        write = true; fn = null; listOpen = true; readResult = null
+                    }
                 }
 
                 // contract
@@ -338,10 +454,15 @@ fun ContractDialog(
                     OutlinedTextField(
                         contract, { contract = it.trim(); readResult = null },
                         label = { Text("Contract address") }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth(), shape = FIELD_SHAPE
+                        modifier = Modifier.fillMaxWidth(), shape = SHAPE
                     )
                     if (savedNow != null) {
-                        Text("Saved as ${savedNow.name}", fontSize = 13.sp, color = Dim.Accent, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            "Saved as ${savedNow.name}",
+                            fontSize = 13.sp,
+                            color = Dim.Accent,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -363,13 +484,25 @@ fun ContractDialog(
                         }
                     }
                     if (!validAddr && contract.isNotBlank()) {
-                        Text("Invalid address or checksum", fontSize = 13.sp, color = Dim.Danger, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            "Invalid address or checksum",
+                            fontSize = 13.sp,
+                            color = Dim.Danger,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                     Text(
                         "Load ABI asks sourcify.dev for the verified ABI. Sourcify sees which address you look up.",
                         fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 8.dp)
                     )
-                    abiNote?.let { Text(it, fontSize = 13.sp, color = Dim.Accent, modifier = Modifier.padding(top = 6.dp)) }
+                    abiNote?.let {
+                        Text(
+                            it,
+                            fontSize = 13.sp,
+                            color = Dim.Accent,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
                 }
 
                 // function
@@ -377,19 +510,34 @@ fun ContractDialog(
                     val shown = fns.list.filter { it.readOnly == !write }
                         .filter { filter.isBlank() || it.name.contains(filter.trim(), true) }
                     TxCard {
-                        Text(if (write) "Write functions" else "Read functions", fontSize = 15.sp, color = Dim.Mid)
+                        Text(
+                            if (write) "Write functions" else "Read functions",
+                            fontSize = 15.sp,
+                            color = Dim.Mid
+                        )
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
-                            filter, { filter = it; listOpen = true }, label = { Text("Search") }, singleLine = true,
-                            modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) listOpen = true },
-                            shape = FIELD_SHAPE
+                            filter,
+                            { filter = it; listOpen = true },
+                            label = { Text("Search") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onFocusChanged { if (it.isFocused) listOpen = true },
+                            shape = SHAPE
                         )
                         if (listOpen) {
                             Spacer(Modifier.height(8.dp))
-                            if (shown.isEmpty()) Text("No matching functions.", fontSize = 14.sp, color = Dim.Mid)
+                            if (shown.isEmpty()) Text(
+                                "No matching functions.",
+                                fontSize = 14.sp,
+                                color = Dim.Mid
+                            )
                             shown.take(15).forEach { f ->
                                 Column(
-                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
                                         .background(if (fn?.sigText == f.sigText) Dim.RaisedSelected else androidx.compose.ui.graphics.Color.Transparent)
                                         .clickable {
                                             fn = f
@@ -402,29 +550,56 @@ fun ContractDialog(
                                         }
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
-                                    Text(f.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text(
+                                        f.name,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
                                     Text(
                                         "(" + f.inputTypes.joinToString(", ") + ")" + if (f.payable) " payable" else "",
                                         fontSize = 12.sp, color = Dim.Mid, maxLines = 1
                                     )
                                 }
                             }
-                            if (shown.size > 15) Text("Showing 15 of ${shown.size}. Search to narrow.", fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 6.dp))
+                            if (shown.size > 15) Text(
+                                "Showing 15 of ${shown.size}. Search to narrow.",
+                                fontSize = 12.sp,
+                                color = Dim.Mid,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
                         }
-                        if ((fns.skipped) > 0) Text("${fns.skipped} function(s) use types this wallet cannot encode.", fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 6.dp))
+                        if ((fns.skipped) > 0) Text(
+                            "${fns.skipped} function(s) use types this wallet cannot encode.",
+                            fontSize = 12.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
                         Spacer(Modifier.height(6.dp))
-                        TextButton(onClick = { manual = true; fn = null; listOpen = true}) { Text("Enter signature by hand") }
+                        TextButton(onClick = {
+                            manual = true; fn = null; listOpen = true
+                        }) { Text("Enter signature by hand") }
                     }
                     fn?.let { f ->
                         TxCard {
                             Text("Arguments", fontSize = 15.sp, color = Dim.Mid)
-                            if (f.inputTypes.isEmpty()) Text("No arguments.", fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+                            if (f.inputTypes.isEmpty()) Text(
+                                "No arguments.",
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
                             f.inputTypes.forEachIndexed { i, t ->
                                 Spacer(Modifier.height(10.dp))
                                 OutlinedTextField(
-                                    argVals.getOrElse(i) { "" }, { v -> if (i < argVals.size) argVals[i] = v },
-                                    label = { Text((f.inputNames.getOrNull(i)?.ifBlank { null } ?: "arg${i + 1}") + " ($t)") },
-                                    singleLine = true, modifier = Modifier.fillMaxWidth(), shape = FIELD_SHAPE
+                                    argVals.getOrElse(i) { "" },
+                                    { v -> if (i < argVals.size) argVals[i] = v },
+                                    label = {
+                                        Text((f.inputNames.getOrNull(i)?.ifBlank { null }
+                                            ?: "arg${i + 1}") + " ($t)")
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = SHAPE
                                 )
                             }
                         }
@@ -436,25 +611,37 @@ fun ContractDialog(
                         OutlinedTextField(
                             sigText, { sigText = it },
                             label = { Text("e.g. balanceOf(address) returns (uint256)") },
-                            modifier = Modifier.fillMaxWidth(), shape = FIELD_SHAPE
+                            modifier = Modifier.fillMaxWidth(), shape = SHAPE
                         )
                         parsed?.let { r ->
                             val s = r.getOrNull()
                             if (s != null) {
                                 val args = if (s.inputs.isEmpty()) "no arguments"
-                                else s.inputs.mapIndexed { i, t -> "${i + 1}=${t.canonical}" }.joinToString("  ")
+                                else s.inputs.mapIndexed { i, t -> "${i + 1}=${t.canonical}" }
+                                    .joinToString("  ")
                                 Text(
                                     "0x${Numeric.toHexStringNoPrefix(s.selector)}  ${s.signature}\nArgs: $args",
-                                    fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 8.dp)
+                                    fontSize = 12.sp,
+                                    color = Dim.Mid,
+                                    modifier = Modifier.padding(top = 8.dp)
                                 )
                             } else {
-                                Text(r.exceptionOrNull()?.message ?: "Bad signature", fontSize = 13.sp, color = Dim.Danger, modifier = Modifier.padding(top = 8.dp))
+                                Text(
+                                    r.exceptionOrNull()?.message ?: "Bad signature",
+                                    fontSize = 13.sp,
+                                    color = Dim.Danger,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
                             }
                         }
                         Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
-                            argsText, { argsText = it }, label = { Text("Arguments, one per line") },
-                            minLines = 2, modifier = Modifier.fillMaxWidth(), shape = FIELD_SHAPE
+                            argsText,
+                            { argsText = it },
+                            label = { Text("Arguments, one per line") },
+                            minLines = 2,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = SHAPE
                         )
                         if (fns != null) {
                             TextButton(onClick = { manual = false }) { Text("Pick from ABI") }
@@ -465,10 +652,13 @@ fun ContractDialog(
                 if (write && (fn?.payable != false)) {
                     TxCard {
                         OutlinedTextField(
-                            valueText, { valueText = it },
-                            label = { Text("Value (${chain.symbol}, optional)") }, singleLine = true,
+                            valueText,
+                            { valueText = it },
+                            label = { Text("Value (${chain.symbol}, optional)") },
+                            singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(), shape = FIELD_SHAPE
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = SHAPE
                         )
                     }
                 }
@@ -477,7 +667,13 @@ fun ContractDialog(
                     TxCard {
                         Text("Result", fontSize = 15.sp, color = Dim.Mid)
                         Spacer(Modifier.height(6.dp))
-                        r.forEach { Text(it, fontSize = 14.sp, modifier = Modifier.padding(vertical = 2.dp)) }
+                        r.forEach {
+                            Text(
+                                it,
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -517,16 +713,25 @@ fun ContractDialog(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     TxMono(contract)
-                    Text("Saved on ${chain.name}, with its ABI if you loaded one.", fontSize = 13.sp, color = Dim.Mid)
+                    Text(
+                        "Saved on ${chain.name}, with its ABI if you loaded one.",
+                        fontSize = 13.sp,
+                        color = Dim.Mid
+                    )
                     OutlinedTextField(
                         name, { name = it.take(32) }, label = { Text("Name") }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth(), shape = FIELD_SHAPE
+                        modifier = Modifier.fillMaxWidth(), shape = SHAPE
                     )
                 }
             },
             confirmButton = {
                 TextButton(enabled = name.isNotBlank(), onClick = {
-                    SavedContracts.add(chain.chainId, Keys.toChecksumAddress(contract.trim()), name, abi)
+                    SavedContracts.add(
+                        chain.chainId,
+                        Keys.toChecksumAddress(contract.trim()),
+                        name,
+                        abi
+                    )
                     saveDialog = false
                 }) { Text("Save") }
             },
@@ -538,17 +743,28 @@ fun ContractDialog(
 @Composable
 private fun contractParty(vm: WalletViewModel, address: String, saved: SavedContract?): Party {
     val party = rememberParty(vm, address)
-    return if (party.sub == null && saved != null) Party(saved.name, shortAddress(address)) else party
+    return if (party.sub == null && saved != null) Party(
+        saved.name,
+        shortAddress(address)
+    ) else party
 }
 
 @Composable
 private fun ModePill(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.height(36.dp).clip(RoundedCornerShape(18.dp))
+        Modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(if (selected) Dim.RaisedSelected else Dim.Raised)
-            .clickable(onClick = onClick).padding(horizontal = 20.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (selected) Dim.Ink else Dim.Mid)
+        Text(
+            label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) Dim.Ink else Dim.Mid
+        )
     }
 }

@@ -1,18 +1,30 @@
 package com.nzm.wallet.ui
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.nzm.wallet.chain.Chain
-import com.nzm.wallet.chain.ChainRepository
+import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.dbs.ChainRepository
+import com.nzm.wallet.utils.Constants.SHAPE
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -41,21 +53,21 @@ fun ChainDialog(repo: ChainRepository, existing: Chain?, onDone: (Chain?) -> Uni
                     { name = it },
                     label = { Text("Name") },
                     singleLine = true,
-                    shape = RoundedCornerShape(20.dp)
+                    shape = SHAPE
                 )
                 OutlinedTextField(
                     rpc,
                     { rpc = it },
                     label = { Text("RPC URL (https)") },
                     singleLine = true,
-                    shape = RoundedCornerShape(20.dp)
+                    shape = SHAPE
                 )
                 OutlinedTextField(
                     id,
                     { id = it },
                     label = { Text("Chain ID") },
                     singleLine = true,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = SHAPE,
                     enabled = existing == null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
@@ -64,14 +76,14 @@ fun ChainDialog(repo: ChainRepository, existing: Chain?, onDone: (Chain?) -> Uni
                     { symbol = it },
                     label = { Text("Currency symbol") },
                     singleLine = true,
-                    shape = RoundedCornerShape(20.dp)
+                    shape = SHAPE
                 )
                 OutlinedTextField(
                     explorer,
                     { explorer = it },
                     label = { Text("Explorer URL (optional)") },
                     singleLine = true,
-                    shape = RoundedCornerShape(20.dp)
+                    shape = SHAPE
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(testnet, { testnet = it })

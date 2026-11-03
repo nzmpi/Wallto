@@ -1,4 +1,4 @@
-package com.nzm.wallet.crypto
+package com.nzm.wallet.core
 
 import org.junit.Assert.*
 import org.junit.Test

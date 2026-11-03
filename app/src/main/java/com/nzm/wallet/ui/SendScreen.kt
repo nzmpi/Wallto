@@ -41,9 +41,16 @@ import java.math.BigDecimal
 import java.math.BigInteger
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.core.net.toUri
+import com.nzm.wallet.dbs.Contact
+import com.nzm.wallet.dbs.Token
+import com.nzm.wallet.utils.Constants.ZERO
+import com.nzm.wallet.utils.Helpers.fmt
+import com.nzm.wallet.utils.Helpers.formatUnits
+import com.nzm.wallet.utils.Helpers.isValidAddress
+import com.nzm.wallet.utils.Helpers.parseAmount
+import com.nzm.wallet.utils.Helpers.shortAddress
+import com.nzm.wallet.utils.Helpers.shortAmount
 import org.web3j.utils.Numeric
-
-private const val SEND_ZERO = "0x0000000000000000000000000000000000000000"
 
 @Composable
 fun SendScreen(
@@ -59,7 +66,6 @@ fun SendScreen(
     val scope = rememberCoroutineScope()
 
     var tokenAddr by remember { mutableStateOf(initialToken?.address) }
-    // falls back to the native coin by itself when the chain changes and the token is not found
     val token = vm.tokens.firstOrNull { it.address == tokenAddr }
     val symbol = token?.symbol ?: chain.symbol
     val decimals = token?.decimals ?: chain.decimals
@@ -72,7 +78,7 @@ fun SendScreen(
     var resolving by remember { mutableStateOf(false) }
     var ensError by remember { mutableStateOf<String?>(null) }
     var plan by remember { mutableStateOf<TxPlan?>(null) }
-    var basePlan by remember { mutableStateOf<TxPlan?>(null) }   // as built, for Reset
+    var basePlan by remember { mutableStateOf<TxPlan?>(null) }
     var feeEdit by remember { mutableStateOf(false) }
     var nonceEdit by remember { mutableStateOf(false) }
     var gasEdit by remember { mutableStateOf(false) }
@@ -96,8 +102,7 @@ fun SendScreen(
     val h = hash
     val ensName: String? = if (resolved != null) to.trim() else planName
 
-    // the address that will receive funds, if the input is valid so far
-    val target: String? = resolved ?: to.trim().takeIf { SendTx.isValidAddress(it) }
+    val target: String? = resolved ?: to.trim().takeIf { isValidAddress(it) }
     val saved = target?.let { t -> vm.contacts.firstOrNull { it.address.equals(t, true) } }
     val typedIsName = Ens.looksLikeName(to)
     val canReview =
@@ -110,6 +115,7 @@ fun SendScreen(
             else -> BigInteger.ZERO
         }
     }
+
     val remaining: BigInteger? = balance?.let { (it - committed()).max(BigInteger.ZERO) }
 
     fun isFirstTime(a: String?): Boolean =
@@ -175,7 +181,9 @@ fun SendScreen(
             busy -> {}
             h != null -> onClose(true)
             p != null -> plan = null
-            to.isNotBlank() || amount.isNotBlank() || batchItems.isNotEmpty() -> discardDialog = true
+            to.isNotBlank() || amount.isNotBlank() || batchItems.isNotEmpty() -> discardDialog =
+                true
+
             else -> onClose(false)
         }
     }
@@ -211,14 +219,14 @@ fun SendScreen(
                     ensError ?: "Name not resolved yet"
                 }
                 val dest = resolved ?: typed
-                require(SendTx.isValidAddress(dest)) { "Invalid recipient address or checksum" }
+                require(isValidAddress(dest)) { "Invalid recipient address or checksum" }
                 require(
                     !dest.equals(
-                        SEND_ZERO,
+                        ZERO,
                         ignoreCase = true
                     )
                 ) { "Recipient is the zero address" }
-                val units = SendTx.parseAmount(amount, decimals)
+                val units = parseAmount(amount, decimals)
                 val built = if (token == null) {
                     SendTx.plan(chain, from, dest, units)
                 } else {
@@ -228,7 +236,7 @@ fun SendScreen(
                     val bal = Erc20.balanceOf(chain.rpcUrl, token.address, from)
                     require(bal >= units) {
                         "Insufficient ${token.symbol}. You have ${
-                            Rpc.formatUnits(
+                            formatUnits(
                                 bal,
                                 token.decimals,
                                 token.decimals
@@ -256,27 +264,59 @@ fun SendScreen(
 
     suspend fun buildBatchItem(): BatchItem {
         val typed = to.trim()
-        if (Ens.looksLikeName(typed)) require(resolved != null) { ensError ?: "Name not resolved yet" }
+        if (Ens.looksLikeName(typed)) require(resolved != null) {
+            ensError ?: "Name not resolved yet"
+        }
         val dest = resolved ?: typed
-        require(SendTx.isValidAddress(dest)) { "Invalid recipient address or checksum" }
-        require(!dest.equals(SEND_ZERO, ignoreCase = true)) { "Recipient is the zero address" }
-        val units = SendTx.parseAmount(amount, decimals)
+        require(isValidAddress(dest)) { "Invalid recipient address or checksum" }
+        require(!dest.equals(ZERO, ignoreCase = true)) { "Recipient is the zero address" }
+        val units = parseAmount(amount, decimals)
         require(units.signum() > 0) { "Enter an amount" }
         val ens = if (resolved != null) typed else null
         return if (token == null) {
             val have = balance ?: throw IllegalArgumentException("Balance not loaded yet")
             val left = (have - committed()).max(BigInteger.ZERO)
-            require(units <= left) { "Only ${shortAmount(left, decimals)} ${chain.symbol} left after the batch" }
-            BatchItem("Send ${shortAmount(units, decimals)} ${chain.symbol}", dest, units, ByteArray(0), name = ens)
+            require(units <= left) {
+                "Only ${
+                    shortAmount(
+                        left,
+                        decimals
+                    )
+                } ${chain.symbol} left after the batch"
+            }
+            BatchItem(
+                "Send ${shortAmount(units, decimals)} ${chain.symbol}",
+                dest,
+                units,
+                ByteArray(0),
+                name = ens
+            )
         } else {
-            require(!dest.equals(token.address, ignoreCase = true)) { "Recipient is the token contract. Tokens would be lost." }
+            require(
+                !dest.equals(
+                    token.address,
+                    ignoreCase = true
+                )
+            ) { "Recipient is the token contract. Tokens would be lost." }
             val bal = Erc20.balanceOf(chain.rpcUrl, token.address, from)
             val left = (bal - committed()).max(BigInteger.ZERO)
-            require(units <= left) { "Only ${shortAmount(left, token.decimals)} ${token.symbol} left after the batch" }
+            require(units <= left) {
+                "Only ${
+                    shortAmount(
+                        left,
+                        token.decimals
+                    )
+                } ${token.symbol} left after the batch"
+            }
             BatchItem(
-                "Send ${shortAmount(units, decimals)} ${token.symbol}", token.address, BigInteger.ZERO,
+                "Send ${shortAmount(units, decimals)} ${token.symbol}",
+                token.address,
+                BigInteger.ZERO,
                 Numeric.hexStringToByteArray(Erc20.encodeTransfer(dest, units)),
-                recipient = dest, name = ens, token = token, spend = units
+                recipient = dest,
+                name = ens,
+                token = token,
+                spend = units
             )
         }
     }
@@ -345,10 +385,6 @@ fun SendScreen(
         }
     }
 
-    fun fmt(v: BigInteger, dec: Int, sym: String) = "${shortAmount(v, dec)} $sym"
-    fun fmtExact(v: BigInteger, dec: Int, sym: String) = "${Rpc.formatUnits(v, dec, dec)} $sym"
-    fun fmtNative(v: BigInteger) = fmt(v, chain.decimals, chain.symbol)
-
     Dialog(
         onDismissRequest = { requestClose() },
         properties = DialogProperties(
@@ -401,13 +437,13 @@ fun SendScreen(
                                     if (tk != null && ta != null) {
                                         AmountBlock(
                                             "Sent",
-                                            fmt(ta, tk.decimals, tk.symbol),
+                                            fmt(ta, tk),
                                             vm.fiat(tk, ta)
                                         )
                                     } else {
                                         AmountBlock(
                                             "Sent",
-                                            fmtNative(p.value),
+                                            fmt(p.value, chain),
                                             vm.fiat(null, p.value)
                                         )
                                     }
@@ -491,13 +527,13 @@ fun SendScreen(
                                 if (tk != null && ta != null) {
                                     AmountBlock(
                                         "Sending",
-                                        fmt(ta, tk.decimals, tk.symbol),
+                                        fmt(ta, tk),
                                         vm.fiat(tk, ta)
                                     )
                                 } else {
                                     AmountBlock(
                                         "Sending",
-                                        fmtNative(p.value),
+                                        fmt(p.value, chain),
                                         vm.fiat(null, p.value)
                                     )
                                 }
@@ -517,7 +553,9 @@ fun SendScreen(
                                 if (isFirstTime(dest)) {
                                     Text(
                                         "First time sending to this address. Check every character before you sign.",
-                                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Accent
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Dim.Accent
                                     )
                                 }
                                 if (ensName != null && chain.chainId != 1L) {
@@ -572,11 +610,14 @@ fun SendScreen(
                                         val fiat = vm.fiat(null, p.maxFeeWei)
                                         Column(horizontalAlignment = Alignment.End) {
                                             Text(
-                                                fiat ?: fmtNative(p.maxFeeWei),
+                                                fiat ?: fmt(
+                                                    p.maxFeeWei,
+                                                    chain
+                                                ),
                                                 fontSize = 16.sp, fontWeight = FontWeight.SemiBold
                                             )
                                             if (fiat != null) Text(
-                                                fmtNative(p.maxFeeWei),
+                                                fmt(p.maxFeeWei, chain),
                                                 fontSize = 12.sp,
                                                 color = Dim.Mid
                                             )
@@ -610,7 +651,10 @@ fun SendScreen(
                                             )
                                             Column(horizontalAlignment = Alignment.End) {
                                                 Text(
-                                                    fmtNative(p.maxTotalWei),
+                                                    fmt(
+                                                        p.maxTotalWei,
+                                                        chain
+                                                    ),
                                                     fontSize = 15.sp,
                                                     fontWeight = FontWeight.SemiBold
                                                 )
@@ -671,21 +715,39 @@ fun SendScreen(
                                             )
                                         }
                                         Row(
-                                            Modifier.fillMaxWidth().clickable(enabled = !busy) { gasEdit = true }.padding(vertical = 8.dp),
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable(enabled = !busy) { gasEdit = true }
+                                                .padding(vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                                            Text(p.gasLimit.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                "Gas limit",
+                                                fontSize = 15.sp,
+                                                color = Dim.Mid,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                p.gasLimit.toString(),
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
                                             Spacer(Modifier.width(10.dp))
-                                            Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
+                                            Icon(
+                                                Ic.Edit,
+                                                "Edit gas limit",
+                                                Modifier.size(16.dp),
+                                                tint = Dim.Mid
+                                            )
                                         }
                                         TxLabel("Exact amount", top = 12)
                                         TxMono(
-                                            if (tk != null && ta != null) fmtExact(ta, tk.decimals, tk.symbol)
-                                            else fmtExact(p.value, chain.decimals, chain.symbol)
+                                            if (tk != null && ta != null)
+                                                fmt(ta, tk, tk.decimals)
+                                            else fmt(p.value, chain, chain.decimals)
                                         )
                                         TxLabel("Exact max fee", top = 12)
-                                        TxMono(fmtExact(p.maxFeeWei, chain.decimals, chain.symbol))
+                                        TxMono(fmt(p.maxFeeWei, chain, chain.decimals))
                                         if (tk != null) {
                                             Text(
                                                 "Token",
@@ -768,9 +830,11 @@ fun SendScreen(
 
                         // ---------- input ----------
                         else -> {
-                            Column(Modifier
-                                .weight(1f)
-                                .verticalScroll(rememberScrollState())) {
+                            Column(
+                                Modifier
+                                    .weight(1f)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
                                 Spacer(Modifier.height(12.dp))
                                 Row(
                                     Modifier.fillMaxWidth(),
@@ -804,7 +868,12 @@ fun SendScreen(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
-                                            AssetIcon(chain, token, 44.dp, symbol.take(1).uppercase())
+                                            AssetIcon(
+                                                chain,
+                                                token,
+                                                44.dp,
+                                                symbol.take(1).uppercase()
+                                            )
                                             Column {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
@@ -865,7 +934,7 @@ fun SendScreen(
                                     horizontalAlignment = Alignment.End
                                 ) {
                                     val units = try {
-                                        SendTx.parseAmount(amount, decimals)
+                                        parseAmount(amount, decimals)
                                     } catch (_: Exception) {
                                         null
                                     }
@@ -975,7 +1044,9 @@ fun SendScreen(
                                 if (saved == null && isFirstTime(target)) {
                                     Text(
                                         "First time sending to this address",
-                                        fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Dim.Danger,
                                         modifier = Modifier.padding(top = 8.dp)
                                     )
                                 }
@@ -991,14 +1062,39 @@ fun SendScreen(
                                 if (batchItems.isNotEmpty()) {
                                     Spacer(Modifier.height(24.dp))
                                     TxCard {
-                                        Text("Batch (${batchItems.size})", fontSize = 15.sp, color = Dim.Mid)
+                                        Text(
+                                            "Batch (${batchItems.size})",
+                                            fontSize = 15.sp,
+                                            color = Dim.Mid
+                                        )
                                         batchItems.forEachIndexed { i, b ->
-                                            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Text("${i + 1}. ${batchLineText(vm, b)}", fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                                Icon(Ic.Trash, "Remove", Modifier.size(20.dp).clickable { batchItems.removeAt(i) }, tint = Dim.Mid)
+                                            Row(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    "${i + 1}. ${batchLineText(vm, b)}",
+                                                    fontSize = 14.sp,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Icon(
+                                                    Ic.Trash,
+                                                    "Remove",
+                                                    Modifier
+                                                        .size(20.dp)
+                                                        .clickable { batchItems.removeAt(i) },
+                                                    tint = Dim.Mid
+                                                )
                                             }
                                         }
-                                        Text("The network is locked while the batch has calls.", fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 4.dp))
+                                        Text(
+                                            "The network is locked while the batch has calls.",
+                                            fontSize = 12.sp,
+                                            color = Dim.Mid,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
                                     }
                                     Spacer(Modifier.height(12.dp))
                                 }
@@ -1050,7 +1146,11 @@ fun SendScreen(
                                 )
                             }
                             if (batchOk || batchItems.isNotEmpty()) {
-                                OutlineButton("Add to batch", onClick = { addToBatch() }, icon = Ic.Plus)
+                                OutlineButton(
+                                    "Add to batch",
+                                    onClick = { addToBatch() },
+                                    icon = Ic.Plus
+                                )
                                 Spacer(Modifier.height(8.dp))
                             }
                             Spacer(Modifier.height(8.dp))
@@ -1185,9 +1285,11 @@ fun SendScreen(
 
 @Composable
 private fun AmountBlock(label: String, amount: String, fiat: String?) {
-    Column(Modifier
-        .fillMaxWidth()
-        .padding(vertical = 8.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
         Text(label, fontSize = 15.sp, color = Dim.Mid)
         Text(amount, fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
         if (fiat != null) Text(fiat, fontSize = 15.sp, color = Dim.Mid)

@@ -16,9 +16,18 @@ import com.nzm.wallet.ui.theme.Dim
 fun GuessInfo(g: SelectorLookup.Guess) {
     Column {
         Text("Looks like", fontSize = 13.sp, color = Dim.Mid)
-        Text(g.signature.substringBefore('(') + "()", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            g.signature.substringBefore('(') + "()",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold
+        )
         g.risks.forEach {
-            Text("WARNING: $it", fontSize = 13.sp, color = Dim.Danger, modifier = Modifier.padding(top = 4.dp))
+            Text(
+                "WARNING: $it",
+                fontSize = 13.sp,
+                color = Dim.Danger,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
         val args = g.args
         if (args == null) {
@@ -28,7 +37,12 @@ fun GuessInfo(g: SelectorLookup.Guess) {
             )
         } else {
             args.take(8).forEach { (type, value) ->
-                Text(type, fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 6.dp))
+                Text(
+                    type,
+                    fontSize = 12.sp,
+                    color = Dim.Mid,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
                 Text(value, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
             }
             if (args.size > 8) Text("+ ${args.size - 8} more", fontSize = 12.sp, color = Dim.Mid)

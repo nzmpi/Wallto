@@ -48,7 +48,12 @@ fun QrDialog(name: String, address: String, onDismiss: () -> Unit) {
         title = { Text(name, maxLines = 1) },
         text = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.clip(RoundedCornerShape(16.dp)).background(Color.White).padding(14.dp)) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .padding(14.dp)
+                ) {
                     Image(
                         qr, "QR code of $address",
                         Modifier.size(220.dp), filterQuality = FilterQuality.None

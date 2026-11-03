@@ -1,8 +1,8 @@
 package com.nzm.wallet.ui
 
-import com.nzm.wallet.chain.Chain
-import com.nzm.wallet.chain.ContractCall
-import com.nzm.wallet.chain.Token
+import com.nzm.wallet.chain.Rpc.ethCall
+import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.dbs.Token
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.web3j.abi.FunctionEncoder
@@ -34,7 +34,8 @@ class BatchItem(
 
 class BatchStatus(val delegate: String?, val supportsBatch: Boolean)
 
-private class CallStruct(to: Address, value: Uint256, data: DynamicBytes) : DynamicStruct(to, value, data)
+private class CallStruct(to: Address, value: Uint256, data: DynamicBytes) :
+    DynamicStruct(to, value, data)
 
 /**
  * Batches for EIP-7702 accounts that implement ERC-7821 (Uniswap Calibur does).
@@ -42,8 +43,10 @@ private class CallStruct(to: Address, value: Uint256, data: DynamicBytes) : Dyna
  */
 object Batch {
     /** ERC-7821 modes: 0x01 00.. reverts everything if one call fails. 0x01 01.. lets a call fail. */
-    private const val MODE_ALL_OR_NOTHING = "0x0100000000000000000000000000000000000000000000000000000000000000"
-    private const val MODE_CAN_FAIL = "0x0101000000000000000000000000000000000000000000000000000000000000"
+    private const val MODE_ALL_OR_NOTHING =
+        "0x0100000000000000000000000000000000000000000000000000000000000000"
+    private const val MODE_CAN_FAIL =
+        "0x0101000000000000000000000000000000000000000000000000000000000000"
 
     private fun mode(allOrNothing: Boolean) =
         Bytes32(Numeric.hexStringToByteArray(if (allOrNothing) MODE_ALL_OR_NOTHING else MODE_CAN_FAIL))
@@ -64,7 +67,7 @@ object Batch {
             listOf(org.web3j.abi.TypeReference.create(org.web3j.abi.datatypes.Bool::class.java))
         )
         val ok = try {
-            val raw = ContractCall.read(chain.rpcUrl, account, account, Numeric.hexStringToByteArray(FunctionEncoder.encode(fn)))
+            val raw = ethCall(chain.rpcUrl, account, account, fn = fn)
             raw.any { it != 0.toByte() }
         } catch (_: Exception) {
             false
@@ -79,12 +82,22 @@ object Batch {
         val executionData = Numeric.hexStringToByteArray(
             FunctionEncoder.encodeConstructor(listOf(DynamicArray(CallStruct::class.java, structs)))
         )
-        val fn = Function("execute", listOf(mode(allOrNothing), DynamicBytes(executionData)), emptyList())
+        val fn = Function(
+            "execute",
+            listOf(mode(allOrNothing), DynamicBytes(executionData)),
+            emptyList()
+        )
         return FunctionEncoder.encode(fn)
     }
 
     fun encodeApprove(spender: String, amount: BigInteger): ByteArray =
         Numeric.hexStringToByteArray(
-            FunctionEncoder.encode(Function("approve", listOf(Address(spender), Uint256(amount)), emptyList()))
+            FunctionEncoder.encode(
+                Function(
+                    "approve",
+                    listOf(Address(spender), Uint256(amount)),
+                    emptyList()
+                )
+            )
         )
 }

@@ -4,14 +4,36 @@ import android.content.ClipboardManager
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,12 +48,13 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.nzm.wallet.chain.WalletRow
-import com.nzm.wallet.crypto.WalletCore
+import com.nzm.wallet.core.WalletCore
+import com.nzm.wallet.dbs.WalletRow
 import com.nzm.wallet.storage.KeystoreVault
 import com.nzm.wallet.storage.SecretType
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.SHAPE
 import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -44,7 +67,9 @@ private fun disconnectSessionsOf(address: String) {
         WcService.sessions.value
             .filter { s ->
                 s.namespaces.values.any { ns ->
-                    ns.accounts.any { it.substringAfterLast(':').equals(address, ignoreCase = true) }
+                    ns.accounts.any {
+                        it.substringAfterLast(':').equals(address, ignoreCase = true)
+                    }
                 }
             }
             .forEach { WcService.disconnect(it.topic) }
@@ -76,7 +101,8 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                     keyLost = true
                 } else {
                     status = e.message ?: "Something went wrong"
-                    if (vm.address != null) Toast.makeText(activity, status, Toast.LENGTH_SHORT).show()
+                    if (vm.address != null) Toast.makeText(activity, status, Toast.LENGTH_SHORT)
+                        .show()
                 }
             }
         }
@@ -84,7 +110,13 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
 
     suspend fun unlock() {
         val id = vault.activeId ?: error("No wallet")
-        vault.withCredentials(activity, id) { creds -> vm.onUnlocked(vault, id, WalletCore.addressOf(creds)) }
+        vault.withCredentials(activity, id) { creds ->
+            vm.onUnlocked(
+                vault,
+                id,
+                WalletCore.addressOf(creds)
+            )
+        }
         status = null
     }
 
@@ -102,7 +134,11 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
         launchSafe {
             val m = WalletCore.generateMnemonic()
             val bytes = m.toByteArray()
-            val id = try { vault.save(activity, SecretType.MNEMONIC, bytes) } finally { bytes.fill(0) }
+            val id = try {
+                vault.save(activity, SecretType.MNEMONIC, bytes)
+            } finally {
+                bytes.fill(0)
+            }
             hasWallet = true
             vm.addWallet(vault, id, WalletCore.addressOf(WalletCore.deriveCredentials(m)))
             vm.addWalletRequest = false
@@ -120,11 +156,13 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                     WalletCore.normalize(input).toByteArray(),
                     WalletCore.addressOf(WalletCore.deriveCredentials(input))
                 )
+
                 pk != null -> Triple(
                     SecretType.PRIVATE_KEY,
                     pk.toByteArray(),
                     WalletCore.addressOf(WalletCore.credentialsFromPrivateKey(pk))
                 )
+
                 else -> {
                     status = "That is not a valid recovery phrase or private key."
                     return@launchSafe
@@ -135,7 +173,11 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                 status = "This wallet is already added."
                 return@launchSafe
             }
-            val id = try { vault.save(activity, type, bytes) } finally { bytes.fill(0) }
+            val id = try {
+                vault.save(activity, type, bytes)
+            } finally {
+                bytes.fill(0)
+            }
             hasWallet = true
             vm.addWallet(vault, id, importedAddress)
             vm.addWalletRequest = false
@@ -188,6 +230,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                     ) lock()
                     vm.backgroundedAt = 0L
                 }
+
                 else -> {}
             }
         }
@@ -206,6 +249,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
             onImport = ::importWallet,
             onCancel = null
         )
+
         keyLost -> KeyLostScreen {
             vault.delete()
             hasWallet = false
@@ -214,6 +258,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
             scope.launch { vm.wipeWallets() }
             status = null
         }
+
         addr != null && phrase != null -> BackupScreen(phrase) { backup = null }
         addr == null -> LockedScreen(status) { launchSafe { unlock() } }
         vm.addWalletRequest -> {
@@ -228,6 +273,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                 onCancel = cancel
             )
         }
+
         else -> MainShell(
             activity = activity,
             vault = vault,
@@ -236,7 +282,11 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
             onReveal = {
                 launchSafe {
                     val (type, bytes) = vault.load(activity)
-                    try { revealed = type to String(bytes) } finally { bytes.fill(0) }
+                    try {
+                        revealed = type to String(bytes)
+                    } finally {
+                        bytes.fill(0)
+                    }
                 }
             },
             onWipe = { confirmWipe = true }
@@ -302,7 +352,10 @@ private fun OnboardingScreen(
 ) {
     val adding = onCancel != null
     Column(
-        Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState())
+        Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
         Spacer(Modifier.height(30.dp))
@@ -325,7 +378,7 @@ private fun OnboardingScreen(
             label = { Text("Recovery phrase or private key") },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            shape = RoundedCornerShape(20.dp),
+            shape = SHAPE,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(12.dp))
@@ -345,7 +398,10 @@ private fun OnboardingScreen(
 private fun BackupScreen(phrase: String, onDone: () -> Unit) {
     val words = phrase.split(" ")
     Column(
-        Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState())
+        Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
         Spacer(Modifier.height(32.dp))
@@ -357,10 +413,20 @@ private fun BackupScreen(phrase: String, onDone: () -> Unit) {
         Spacer(Modifier.height(28.dp))
         words.chunked(2).forEachIndexed { row, pair ->
             Hairline()
-            Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 pair.forEachIndexed { i, w ->
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${row * 2 + i + 1}", fontSize = 14.sp, color = Dim.Mid, modifier = Modifier.width(28.dp))
+                        Text(
+                            "${row * 2 + i + 1}",
+                            fontSize = 14.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.width(28.dp)
+                        )
                         Text(w, fontSize = 17.sp, fontWeight = FontWeight.Medium)
                     }
                 }
@@ -375,7 +441,10 @@ private fun BackupScreen(phrase: String, onDone: () -> Unit) {
 @Composable
 private fun LockedScreen(status: String?, onUnlock: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().systemBarsPadding().padding(20.dp),
+        Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -396,7 +465,10 @@ private fun LockedScreen(status: String?, onUnlock: () -> Unit) {
 @Composable
 private fun KeyLostScreen(onReset: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().systemBarsPadding().padding(20.dp),
+        Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

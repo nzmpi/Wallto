@@ -34,7 +34,8 @@ private fun PathBuilder.circle(cx: Float, cy: Float, r: Float) {
 object Ic {
     val Lock = icon("lock") {
         moveTo(5f, 11f); horizontalLineTo(19f); verticalLineTo(20f); horizontalLineTo(5f); close()
-        moveTo(8f, 11f); verticalLineTo(8f); arcTo(4f, 4f, 0f,
+        moveTo(8f, 11f); verticalLineTo(8f); arcTo(
+        4f, 4f, 0f,
         isMoreThanHalf = false,
         isPositiveArc = true,
         x1 = 16f,
@@ -115,7 +116,8 @@ object Ic {
     }
     val UserPlus = icon("userPlus") {
         circle(10f, 8f, 3.5f)
-        moveTo(4f, 19f); arcTo(6f, 6f, 0f,
+        moveTo(4f, 19f); arcTo(
+        6f, 6f, 0f,
         isMoreThanHalf = false,
         isPositiveArc = true,
         x1 = 16f,
@@ -137,9 +139,18 @@ object Ic {
         horizontalLineTo(20f)
     }
     val Qr = icon("qr") {
-        moveTo(4f, 4f); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
-        moveTo(15f, 4f); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
-        moveTo(4f, 15f); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
+        moveTo(
+            4f,
+            4f
+        ); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
+        moveTo(
+            15f,
+            4f
+        ); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
+        moveTo(
+            4f,
+            15f
+        ); horizontalLineToRelative(5f); verticalLineToRelative(5f); horizontalLineToRelative(-5f); close()
         moveTo(15f, 15f); horizontalLineToRelative(2f); verticalLineToRelative(2f)
         moveTo(20f, 15f); verticalLineToRelative(0.01f)
         moveTo(15f, 20f); horizontalLineToRelative(0.01f)

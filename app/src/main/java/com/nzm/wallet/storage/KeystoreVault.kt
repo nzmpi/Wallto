@@ -1,51 +1,38 @@
 package com.nzm.wallet.storage
 
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties.*
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.StrongBoxUnavailableException
+import com.nzm.wallet.utils.Constants.PROVIDER
+import com.nzm.wallet.utils.Constants.TRANSFORM
+import com.nzm.wallet.utils.Helpers.generateSecretKey
 import java.security.KeyStore
+import java.security.UnrecoverableKeyException
 import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import android.security.keystore.KeyPermanentlyInvalidatedException
-import java.security.UnrecoverableKeyException
 
 class KeyLostException : Exception("Wallet key missing")
 
 object KeystoreVault {
     private const val ALIAS = "wallet_master_key"
-    private const val PROVIDER = "AndroidKeyStore"
-    private const val TRANSFORM = "AES/GCM/NoPadding"
 
     private fun getOrCreateKey(): SecretKey {
         val ks = KeyStore.getInstance(PROVIDER).apply { load(null) }
         (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
         return try {
-            generate(strongBox = true)
+            generateSecretKey(ALIAS, strongBox = true)
         } catch (_: StrongBoxUnavailableException) {
-            generate(strongBox = false)
+            generateSecretKey(ALIAS, strongBox = false)
         }
-    }
-
-    private fun generate(strongBox: Boolean): SecretKey {
-        val spec = KeyGenParameterSpec.Builder(ALIAS, PURPOSE_ENCRYPT or PURPOSE_DECRYPT)
-            .setBlockModes(BLOCK_MODE_GCM)
-            .setEncryptionPaddings(ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .setUserAuthenticationRequired(true)
-            .setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG or AUTH_DEVICE_CREDENTIAL)
-            .setInvalidatedByBiometricEnrollment(true)
-            .setIsStrongBoxBacked(strongBox)
-            .build()
-        return KeyGenerator.getInstance(KEY_ALGORITHM_AES, PROVIDER)
-            .apply { init(spec) }
-            .generateKey()
     }
 
     private fun existingKey(): SecretKey {
         val ks = KeyStore.getInstance(PROVIDER).apply { load(null) }
-        val key = try { ks.getKey(ALIAS, null) } catch (_: UnrecoverableKeyException) { null }
+        val key = try {
+            ks.getKey(ALIAS, null)
+        } catch (_: UnrecoverableKeyException) {
+            null
+        }
         return key as? SecretKey ?: throw KeyLostException()
     }
 

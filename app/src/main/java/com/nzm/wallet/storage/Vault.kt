@@ -6,7 +6,8 @@ import androidx.fragment.app.FragmentActivity
 import java.io.File
 import java.security.SecureRandom
 import org.web3j.crypto.Credentials
-import com.nzm.wallet.crypto.WalletCore
+import com.nzm.wallet.core.WalletCore
+import com.nzm.wallet.utils.Helpers.getPrefs
 
 enum class SecretType(val tag: Byte) {
     MNEMONIC(1), PRIVATE_KEY(2);
@@ -21,7 +22,7 @@ enum class SecretType(val tag: Byte) {
 class Vault(context: Context) {
     // noBackupFilesDir: excluded from cloud backup and device transfer
     private val dir = File(context.noBackupFilesDir, "wallets").apply { mkdirs() }
-    private val prefs = context.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
+    private val prefs = context.getPrefs("wallet_prefs")
 
     init {
         val legacy = File(context.noBackupFilesDir, "wallet.bin")
@@ -80,7 +81,7 @@ class Vault(context: Context) {
     /** secret = UTF-8 bytes of mnemonic, or hex private key. Caller wipes it after. */
     suspend fun save(activity: FragmentActivity, id: String, type: SecretType, secret: ByteArray) {
         val file = fileOf(id)
-        val cipher = BiometricGate.authenticate(activity, KeystoreVault.encryptCipher(), "Save wallet")
+        val cipher = WalletCore.authenticate(activity, KeystoreVault.encryptCipher(), "Save wallet")
         cipher.updateAAD(byteArrayOf(type.tag))
         val ct = cipher.doFinal(secret)
         val iv = cipher.iv
@@ -106,7 +107,7 @@ class Vault(context: Context) {
         val ivLen = blob[2].toInt()
         val iv = blob.copyOfRange(3, 3 + ivLen)
         val ct = blob.copyOfRange(3 + ivLen, blob.size)
-        val cipher = BiometricGate.authenticate(activity, KeystoreVault.decryptCipher(iv), "Unlock wallet")
+        val cipher = WalletCore.authenticate(activity, KeystoreVault.decryptCipher(iv), "Unlock wallet")
         cipher.updateAAD(byteArrayOf(type.tag))
         return type to cipher.doFinal(ct)
     }

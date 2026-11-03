@@ -1,4 +1,4 @@
-package com.nzm.wallet.chain
+package com.nzm.wallet.dbs
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow

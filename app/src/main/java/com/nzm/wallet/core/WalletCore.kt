@@ -1,5 +1,11 @@
-package com.nzm.wallet.crypto
+package com.nzm.wallet.core
 
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.web3j.crypto.Bip32ECKeyPair
 import org.web3j.crypto.Credentials
 import org.web3j.crypto.Keys
@@ -7,6 +13,9 @@ import org.web3j.crypto.MnemonicUtils
 import java.security.SecureRandom
 import org.web3j.crypto.Sign
 import java.math.BigInteger
+import javax.crypto.Cipher
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 object WalletCore {
     private const val HARDENED = Bip32ECKeyPair.HARDENED_BIT
@@ -61,7 +70,30 @@ object WalletCore {
     }
 
     fun credentialsFromPrivateKey(input: String): Credentials {
-        val hex = normalizePrivateKey(input) ?: throw IllegalArgumentException("Invalid private key")
+        val hex =
+            normalizePrivateKey(input) ?: throw IllegalArgumentException("Invalid private key")
         return Credentials.create(hex)
     }
+
+    suspend fun authenticate(activity: FragmentActivity, cipher: Cipher, title: String): Cipher =
+        suspendCancellableCoroutine { cont ->
+            val prompt = BiometricPrompt(
+                activity,
+                ContextCompat.getMainExecutor(activity),
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        cont.resume(result.cryptoObject!!.cipher!!)
+                    }
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        cont.resumeWithException(SecurityException(errString.toString()))
+                    }
+                }
+            )
+            val info = BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+                .build()
+            prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
+            cont.invokeOnCancellation { prompt.cancelAuthentication() }
+        }
 }

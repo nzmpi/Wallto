@@ -14,8 +14,13 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.chain.*
+import com.nzm.wallet.chain.Rpc.isContract
+import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.ZERO
+import com.nzm.wallet.utils.Helpers.fmt
+import com.nzm.wallet.utils.Helpers.shortAddress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.web3j.crypto.Keys
@@ -46,8 +51,6 @@ fun DelegationDialog(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var changed by remember { mutableStateOf(false) }
-
-    fun fmt(v: BigInteger) = "${shortAmount(v, chain.decimals)} ${chain.symbol}"
 
     LaunchedEffect(chain.chainId, from) {
         loaded = false
@@ -82,7 +85,7 @@ fun DelegationDialog(
     val base = basePlan
     val h = hash
     val tgt = target
-    val revoke = tgt == Delegation.ZERO
+    val revoke = tgt == ZERO
 
     fun launchSafe(block: suspend () -> Unit) {
         busy = true
@@ -101,8 +104,13 @@ fun DelegationDialog(
     }
 
     fun prepare(delegate: String) = launchSafe {
-        if (delegate != Delegation.ZERO) {
-            require(Erc20.isContract(chain.rpcUrl, delegate)) { "This contract is not deployed on ${chain.name}" }
+        if (delegate != ZERO) {
+            require(
+                isContract(
+                    chain.rpcUrl,
+                    delegate
+                )
+            ) { "This contract is not deployed on ${chain.name}" }
         }
         val built = SendTx.plan(chain, from, from, BigInteger.ZERO)
             .let { it.copy(gasLimit = it.gasLimit.max(Delegation.GAS_LIMIT)) }
@@ -116,7 +124,10 @@ fun DelegationDialog(
         when {
             busy -> {}
             h != null -> onClose(changed)
-            p != null -> { plan = null; basePlan = null; target = null }
+            p != null -> {
+                plan = null; basePlan = null; target = null
+            }
+
             else -> onClose(changed)
         }
     }
@@ -128,23 +139,36 @@ fun DelegationDialog(
                 h != null -> {
                     if (chain.explorerUrl != null) {
                         OutlineButton("Explorer", {
-                            activity.startActivity(Intent(Intent.ACTION_VIEW, "${chain.explorerUrl}/tx/$h".toUri()))
+                            activity.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    "${chain.explorerUrl}/tx/$h".toUri()
+                                )
+                            )
                         }, Modifier.weight(1f))
                     }
                     PrimaryButton("Done", { onClose(changed) }, Modifier.weight(1f))
                 }
+
                 p != null && tgt != null -> {
                     OutlineButton("Back", { goBack() }, Modifier.weight(1f))
                     PrimaryButton(
                         if (busy) "Working…" else "Sign & send",
                         onClick = {
                             launchSafe {
-                                hash = vault.withCredentials(activity) { creds -> Delegation.signAndSend(p, tgt, creds) }
+                                hash = vault.withCredentials(activity) { creds ->
+                                    Delegation.signAndSend(
+                                        p,
+                                        tgt,
+                                        creds
+                                    )
+                                }
                             }
                         },
                         enabled = !busy && (revoke || understood), modifier = Modifier.weight(1f)
                     )
                 }
+
                 else -> OutlineButton("Close", { goBack() }, Modifier.weight(1f))
             }
         }
@@ -153,7 +177,10 @@ fun DelegationDialog(
             // ---------- status ----------
             h != null -> {
                 PageHeader("Sent") { onClose(changed) }
-                TxAmount(if (revoke) "Delegation revoked" else "Delegation set", Delegation.knownName(tgt) ?: "")
+                TxAmount(
+                    if (revoke) "Delegation revoked" else "Delegation set",
+                    Delegation.knownName(tgt) ?: ""
+                )
                 TxCard {
                     TxRow(
                         "Status", result,
@@ -175,7 +202,8 @@ fun DelegationDialog(
                 PageHeader("Review") { goBack() }
                 TxAmount(
                     if (revoke) "Revoke delegation" else "Delegate account",
-                    if (revoke) "Back to a plain account" else (Delegation.knownName(tgt) ?: shortAddress(tgt)),
+                    if (revoke) "Back to a plain account" else (Delegation.knownName(tgt)
+                        ?: shortAddress(tgt)),
                     color = if (revoke) Dim.Ink else Dim.Danger
                 )
                 TxCard { TxPartyRow("Account", rememberParty(vm, p.from)) }
@@ -196,22 +224,43 @@ fun DelegationDialog(
                         TxLabel("Delegate contract", top = 0)
                         TxMono(Keys.toChecksumAddress(tgt))
                         if (Delegation.knownName(tgt) == null) {
-                            Text("Not a contract this wallet knows.", fontSize = 13.sp, color = Dim.Danger, modifier = Modifier.padding(top = 6.dp))
+                            Text(
+                                "Not a contract this wallet knows.",
+                                fontSize = 13.sp,
+                                color = Dim.Danger,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
                         }
                     }
                     TxCard(Modifier.clickable { understood = !understood }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 "I understand and I trust this contract",
-                                fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f)
                             )
-                            Text(if (understood) "Yes" else "No", fontSize = 15.sp, color = if (understood) TxOk else Dim.Mid)
+                            Text(
+                                if (understood) "Yes" else "No",
+                                fontSize = 15.sp,
+                                color = if (understood) TxOk else Dim.Mid
+                            )
                         }
                     }
                 }
                 TxCard {
-                    Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Network", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Network",
+                            fontSize = 15.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.weight(1f)
+                        )
                         Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
                     }
@@ -220,12 +269,24 @@ fun DelegationDialog(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Max fee", fontSize = 15.sp, color = Dim.Mid)
-                            if (base != null && p.fee != base.fee) Text("Edited", fontSize = 12.sp, color = Dim.Accent)
+                            if (base != null && p.fee != base.fee) Text(
+                                "Edited",
+                                fontSize = 12.sp,
+                                color = Dim.Accent
+                            )
                         }
                         val fiat = vm.fiat(null, p.maxFeeWei)
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(fiat ?: fmt(p.maxFeeWei), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            if (fiat != null) Text(fmt(p.maxFeeWei), fontSize = 12.sp, color = Dim.Mid)
+                            Text(
+                                fiat ?: fmt(p.maxFeeWei, chain),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (fiat != null) Text(
+                                fmt(p.maxFeeWei, chain),
+                                fontSize = 12.sp,
+                                color = Dim.Mid
+                            )
                         }
                         Spacer(Modifier.width(10.dp))
                         Icon(Ic.Edit, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
@@ -233,27 +294,47 @@ fun DelegationDialog(
                 }
                 TxAdvanced {
                     Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !busy) { nonceEdit = true }.padding(vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !busy) { nonceEdit = true }
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Nonce", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
+                        Text(
+                            "Nonce",
+                            fontSize = 15.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.weight(1f)
+                        )
                         Text(p.nonce.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.width(10.dp))
                         Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
                     }
                     Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !busy) { gasEdit = true }.padding(vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !busy) { gasEdit = true }
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                        Text(p.gasLimit.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Gas limit",
+                            fontSize = 15.sp,
+                            color = Dim.Mid,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            p.gasLimit.toString(),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         Spacer(Modifier.width(10.dp))
                         Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
                     }
                     TxRow("Authorization chain", chain.chainId.toString())
                     TxRow("Authorization nonce", (p.nonce + BigInteger.ONE).toString())
                     TxLabel("Delegate address", top = 12)
-                    TxMono(if (revoke) "${Delegation.ZERO} (none)" else Keys.toChecksumAddress(tgt))
+                    TxMono(if (revoke) "$ZERO (none)" else Keys.toChecksumAddress(tgt))
                     Text(
                         "The authorization is only valid on this chain.",
                         fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 8.dp)
@@ -272,13 +353,26 @@ fun DelegationDialog(
                 TxCard {
                     TxLabel("Delegated to", top = 4)
                     when {
-                        loadError != null -> Text(loadError ?: "", fontSize = 14.sp, color = Dim.Danger)
+                        loadError != null -> Text(
+                            loadError ?: "",
+                            fontSize = 14.sp,
+                            color = Dim.Danger
+                        )
+
                         !loaded -> Text("Checking…", fontSize = 14.sp, color = Dim.Mid)
-                        current == null -> Text("Not delegated. This is a plain account on ${chain.name}.", fontSize = 14.sp)
+                        current == null -> Text(
+                            "Not delegated. This is a plain account on ${chain.name}.",
+                            fontSize = 14.sp
+                        )
+
                         else -> {
                             val name = Delegation.knownName(current)
-                            Text(name ?: "Unknown contract", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                                color = if (name == null) Dim.Danger else Dim.Ink)
+                            Text(
+                                name ?: "Unknown contract",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (name == null) Dim.Danger else Dim.Ink
+                            )
                             TxMono(current ?: "")
                         }
                     }
@@ -294,19 +388,32 @@ fun DelegationDialog(
                         TxCard(Modifier.clickable(enabled = !busy) { prepare(k.address) }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(if (current == null) "Delegate to" else "Switch to", fontSize = 13.sp, color = Dim.Mid)
+                                    Text(
+                                        if (current == null) "Delegate to" else "Switch to",
+                                        fontSize = 13.sp,
+                                        color = Dim.Mid
+                                    )
                                     Text(k.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(shortAddress(Keys.toChecksumAddress(k.address)), fontSize = 12.sp, color = Dim.Mid)
+                                    Text(
+                                        shortAddress(Keys.toChecksumAddress(k.address)),
+                                        fontSize = 12.sp,
+                                        color = Dim.Mid
+                                    )
                                 }
                                 Icon(Ic.ChevronRight, null, Modifier.size(18.dp), tint = Dim.Mid)
                             }
                         }
                     }
                     if (current != null) {
-                        TxCard(Modifier.clickable(enabled = !busy) { prepare(Delegation.ZERO) }) {
+                        TxCard(Modifier.clickable(enabled = !busy) { prepare(ZERO) }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Revoke delegation", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                                    color = Dim.Danger, modifier = Modifier.weight(1f))
+                                Text(
+                                    "Revoke delegation",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Dim.Danger,
+                                    modifier = Modifier.weight(1f)
+                                )
                                 Icon(Ic.ChevronRight, null, Modifier.size(18.dp), tint = Dim.Mid)
                             }
                         }
@@ -319,10 +426,17 @@ fun DelegationDialog(
     }
 
     if (feeEdit && p != null && base != null) {
-        TxFeeDialog(plan = p, base = base, onSave = { plan = p.copy(fee = it); feeEdit = false }, onDismiss = { feeEdit = false })
+        TxFeeDialog(
+            plan = p,
+            base = base,
+            onSave = { plan = p.copy(fee = it); feeEdit = false },
+            onDismiss = { feeEdit = false })
     }
     if (nonceEdit && p != null) {
-        TxNonceDialog(current = p.nonce, onSave = { plan = p.copy(nonce = it); nonceEdit = false }, onDismiss = { nonceEdit = false })
+        TxNonceDialog(
+            current = p.nonce,
+            onSave = { plan = p.copy(nonce = it); nonceEdit = false },
+            onDismiss = { nonceEdit = false })
     }
     if (gasEdit && p != null && base != null) {
         TxGasDialog(
