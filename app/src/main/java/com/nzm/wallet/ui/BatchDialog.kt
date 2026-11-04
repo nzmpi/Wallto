@@ -58,11 +58,7 @@ fun BatchDialog(
     var allOrNothing by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf<BatchStatus?>(null) }
     var statusError by remember { mutableStateOf<String?>(null) }
-    var plan by remember { mutableStateOf<TxPlan?>(null) }
-    var basePlan by remember { mutableStateOf<TxPlan?>(null) }
-    var feeEdit by remember { mutableStateOf(false) }
-    var nonceEdit by remember { mutableStateOf(false) }
-    var gasEdit by remember { mutableStateOf(false) }
+    val editor = rememberPlanEditor()
     var hash by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf("Pending...") }
     var busy by remember { mutableStateOf(false) }
@@ -95,8 +91,7 @@ fun BatchDialog(
         }
     }
 
-    val p = plan
-    val base = basePlan
+    val p = editor.plan
     val h = hash
     val canBatch = status?.supportsBatch == true
 
@@ -119,18 +114,14 @@ fun BatchDialog(
     fun buildPlan() = launchSafe {
         val data = Batch.encode(items.toList(), allOrNothing)
         val built = SendTx.plan(chain, from, from, BigInteger.ZERO, data)
-        basePlan = built
-        plan = built
+        editor.load(built)
     }
 
     fun goBack() {
         when {
             busy -> {}
             h != null -> onClose(true)
-            p != null -> {
-                plan = null; basePlan = null
-            }
-
+            p != null -> editor.clear()
             else -> onClose(false)
         }
     }
@@ -244,90 +235,11 @@ fun BatchDialog(
                         }
                     }
                 }
-                TxCard {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(36.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Network",
-                            fontSize = 15.sp,
-                            color = Dim.Mid,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
-                    }
-                }
-                TxCard(Modifier.clickable(enabled = !busy) { feeEdit = true }) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Max fee", fontSize = 15.sp, color = Dim.Mid)
-                            if (base != null && p.fee != base.fee) Text(
-                                "Edited",
-                                fontSize = 12.sp,
-                                color = Dim.Accent
-                            )
-                        }
-                        val fiat = vm.fiat(null, p.maxFeeWei)
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                fiat ?: fmt(p.maxFeeWei, chain),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (fiat != null) Text(
-                                fmt(p.maxFeeWei, chain),
-                                fontSize = 12.sp,
-                                color = Dim.Mid
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Icon(Ic.Edit, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
-                    }
-                }
+                TxNetworkCard(chain)
+                TxFeeCard(vm, chain, editor, busy)
                 SimulationCard(vm, chain, p)
                 TxAdvanced {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !busy) { nonceEdit = true }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Nonce",
-                            fontSize = 15.sp,
-                            color = Dim.Mid,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(p.nonce.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.width(10.dp))
-                        Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
-                    }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !busy) { gasEdit = true }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Gas limit",
-                            fontSize = 15.sp,
-                            color = Dim.Mid,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            p.gasLimit.toString(),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
-                    }
+                    TxPlanRows(editor, busy)
                     status?.delegate?.let {
                         TxLabel("Delegated to", top = 12)
                         TxMono(it)
@@ -444,27 +356,7 @@ fun BatchDialog(
             onAdd = { items.add(it); adding = false },
             onDismiss = { adding = false })
     }
-    if (feeEdit && p != null && base != null) {
-        TxFeeDialog(
-            plan = p,
-            base = base,
-            onSave = { plan = p.copy(fee = it); feeEdit = false },
-            onDismiss = { feeEdit = false })
-    }
-    if (nonceEdit && p != null) {
-        TxNonceDialog(
-            current = p.nonce,
-            onSave = { plan = p.copy(nonce = it); nonceEdit = false },
-            onDismiss = { nonceEdit = false })
-    }
-    if (gasEdit && p != null && base != null) {
-        TxGasDialog(
-            current = p.gasLimit,
-            base = base.gasLimit,
-            onSave = { plan = p.copy(gasLimit = it); gasEdit = false },
-            onDismiss = { gasEdit = false }
-        )
-    }
+    PlanEditorDialogs(editor)
 }
 
 private enum class Kind(val label: String) {

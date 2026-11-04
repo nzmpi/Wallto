@@ -2,10 +2,21 @@ package com.nzm.wallet.ui
 
 import android.content.Intent
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -13,13 +24,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
-import com.nzm.wallet.chain.*
 import com.nzm.wallet.chain.Rpc.isContract
+import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.ZERO
-import com.nzm.wallet.utils.Helpers.fmt
 import com.nzm.wallet.utils.Helpers.shortAddress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -40,11 +50,7 @@ fun DelegationDialog(
     var loaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var target by remember { mutableStateOf<String?>(null) }       // delegate address, ZERO = revoke
-    var plan by remember { mutableStateOf<TxPlan?>(null) }
-    var basePlan by remember { mutableStateOf<TxPlan?>(null) }
-    var feeEdit by remember { mutableStateOf(false) }
-    var nonceEdit by remember { mutableStateOf(false) }
-    var gasEdit by remember { mutableStateOf(false) }
+    val editor = rememberPlanEditor()
     var understood by remember { mutableStateOf(false) }
     var hash by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf("Pending...") }
@@ -81,8 +87,7 @@ fun DelegationDialog(
         if (result == "Confirmed") changed = true
     }
 
-    val p = plan
-    val base = basePlan
+    val p = editor.plan
     val h = hash
     val tgt = target
     val revoke = tgt == ZERO
@@ -114,8 +119,7 @@ fun DelegationDialog(
         }
         val built = SendTx.plan(chain, from, from, BigInteger.ZERO)
             .let { it.copy(gasLimit = it.gasLimit.max(Delegation.GAS_LIMIT)) }
-        basePlan = built
-        plan = built
+        editor.load(built)
         target = delegate
         understood = false
     }
@@ -125,7 +129,7 @@ fun DelegationDialog(
             busy -> {}
             h != null -> onClose(changed)
             p != null -> {
-                plan = null; basePlan = null; target = null
+                editor.clear(); target = null
             }
 
             else -> onClose(changed)
@@ -248,89 +252,10 @@ fun DelegationDialog(
                         }
                     }
                 }
-                TxCard {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(36.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Network",
-                            fontSize = 15.sp,
-                            color = Dim.Mid,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
-                    }
-                }
-                TxCard(Modifier.clickable(enabled = !busy) { feeEdit = true }) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Max fee", fontSize = 15.sp, color = Dim.Mid)
-                            if (base != null && p.fee != base.fee) Text(
-                                "Edited",
-                                fontSize = 12.sp,
-                                color = Dim.Accent
-                            )
-                        }
-                        val fiat = vm.fiat(null, p.maxFeeWei)
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                fiat ?: fmt(p.maxFeeWei, chain),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (fiat != null) Text(
-                                fmt(p.maxFeeWei, chain),
-                                fontSize = 12.sp,
-                                color = Dim.Mid
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Icon(Ic.Edit, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
-                    }
-                }
+                TxNetworkCard(chain)
+                TxFeeCard(vm, chain, editor, busy)
                 TxAdvanced {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !busy) { nonceEdit = true }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Nonce",
-                            fontSize = 15.sp,
-                            color = Dim.Mid,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(p.nonce.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.width(10.dp))
-                        Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
-                    }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !busy) { gasEdit = true }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Gas limit",
-                            fontSize = 15.sp,
-                            color = Dim.Mid,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            p.gasLimit.toString(),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
-                    }
+                    TxPlanRows(editor, busy)
                     TxRow("Authorization chain", chain.chainId.toString())
                     TxRow("Authorization nonce", (p.nonce + BigInteger.ONE).toString())
                     TxLabel("Delegate address", top = 12)
@@ -425,25 +350,5 @@ fun DelegationDialog(
         error?.let { Text(it, fontSize = 14.sp, color = Dim.Danger) }
     }
 
-    if (feeEdit && p != null && base != null) {
-        TxFeeDialog(
-            plan = p,
-            base = base,
-            onSave = { plan = p.copy(fee = it); feeEdit = false },
-            onDismiss = { feeEdit = false })
-    }
-    if (nonceEdit && p != null) {
-        TxNonceDialog(
-            current = p.nonce,
-            onSave = { plan = p.copy(nonce = it); nonceEdit = false },
-            onDismiss = { nonceEdit = false })
-    }
-    if (gasEdit && p != null && base != null) {
-        TxGasDialog(
-            current = p.gasLimit,
-            base = base.gasLimit,
-            onSave = { plan = p.copy(gasLimit = it); gasEdit = false },
-            onDismiss = { gasEdit = false }
-        )
-    }
+    PlanEditorDialogs(editor)
 }

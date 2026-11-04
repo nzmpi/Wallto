@@ -4,19 +4,43 @@ import android.content.ClipboardManager
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -29,20 +53,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
-import androidx.fragment.app.FragmentActivity
-import com.nzm.wallet.chain.*
-import com.nzm.wallet.storage.Vault
-import com.nzm.wallet.ui.theme.Dim
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import org.web3j.crypto.Keys
-import java.math.BigDecimal
-import java.math.BigInteger
-import kotlin.time.Duration.Companion.milliseconds
 import androidx.core.net.toUri
+import androidx.fragment.app.FragmentActivity
+import com.nzm.wallet.chain.Ens
+import com.nzm.wallet.chain.Erc20
+import com.nzm.wallet.chain.SendTx
+import com.nzm.wallet.chain.TxPlan
 import com.nzm.wallet.dbs.Contact
 import com.nzm.wallet.dbs.Token
+import com.nzm.wallet.storage.Vault
+import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.ZERO
 import com.nzm.wallet.utils.Helpers.fmt
 import com.nzm.wallet.utils.Helpers.formatUnits
@@ -50,7 +70,14 @@ import com.nzm.wallet.utils.Helpers.isValidAddress
 import com.nzm.wallet.utils.Helpers.parseAmount
 import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.utils.Helpers.shortAmount
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
+import java.math.BigDecimal
+import java.math.BigInteger
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun SendScreen(
@@ -77,12 +104,7 @@ fun SendScreen(
     var resolved by remember { mutableStateOf<String?>(null) }
     var resolving by remember { mutableStateOf(false) }
     var ensError by remember { mutableStateOf<String?>(null) }
-    var plan by remember { mutableStateOf<TxPlan?>(null) }
-    var basePlan by remember { mutableStateOf<TxPlan?>(null) }
-    var feeEdit by remember { mutableStateOf(false) }
-    var nonceEdit by remember { mutableStateOf(false) }
-    var gasEdit by remember { mutableStateOf(false) }
-    var advanced by remember { mutableStateOf(false) }
+    val editor = rememberPlanEditor()
     var hash by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf("Pending...") }
     var busy by remember { mutableStateOf(false) }
@@ -98,7 +120,7 @@ fun SendScreen(
     val batchOk = rememberBatchSupport(chain, from)
     var planName by remember { mutableStateOf<String?>(null) }
 
-    val p = plan
+    val p = editor.plan
     val h = hash
     val ensName: String? = if (resolved != null) to.trim() else planName
 
@@ -180,7 +202,7 @@ fun SendScreen(
         when {
             busy -> {}
             h != null -> onClose(true)
-            p != null -> plan = null
+            p != null -> editor.clear()
             to.isNotBlank() || amount.isNotBlank() || batchItems.isNotEmpty() -> discardDialog =
                 true
 
@@ -249,9 +271,7 @@ fun SendScreen(
                     )
                 }
                 planName = null
-                basePlan = built
-                advanced = false
-                plan = built
+                editor.load(built)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -355,10 +375,8 @@ fun SendScreen(
                         Numeric.toHexString(b.data), b.recipient, t, b.spend
                     )
                 }
-                basePlan = built
-                advanced = false
                 planName = b.name
-                plan = built
+                editor.load(built)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -512,7 +530,6 @@ fun SendScreen(
 
                         // ---------- review ----------
                         p != null -> {
-                            val base = basePlan
                             val dest = p.recipient ?: p.to
                             Column(
                                 Modifier
@@ -566,72 +583,8 @@ fun SendScreen(
                                     )
                                 }
 
-                                // network
-                                TxCard {
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .height(36.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            "Network",
-                                            fontSize = 15.sp,
-                                            color = Dim.Mid,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Text(
-                                            chain.name,
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        if (chain.isTestnet) Text(
-                                            "  testnet",
-                                            fontSize = 13.sp,
-                                            color = Dim.Mid
-                                        )
-                                    }
-                                }
-
-                                // max fee, tap to change
-                                TxCard(Modifier.clickable(enabled = !busy) { feeEdit = true }) {
-                                    Row(
-                                        Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text("Max fee", fontSize = 15.sp, color = Dim.Mid)
-                                            if (base != null && p.fee != base.fee) Text(
-                                                "Edited",
-                                                fontSize = 12.sp,
-                                                color = Dim.Accent
-                                            )
-                                        }
-                                        val fiat = vm.fiat(null, p.maxFeeWei)
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                fiat ?: fmt(
-                                                    p.maxFeeWei,
-                                                    chain
-                                                ),
-                                                fontSize = 16.sp, fontWeight = FontWeight.SemiBold
-                                            )
-                                            if (fiat != null) Text(
-                                                fmt(p.maxFeeWei, chain),
-                                                fontSize = 12.sp,
-                                                color = Dim.Mid
-                                            )
-                                        }
-                                        Spacer(Modifier.width(10.dp))
-                                        Icon(
-                                            Ic.Edit,
-                                            "Edit fee",
-                                            Modifier.size(18.dp),
-                                            tint = Dim.Mid
-                                        )
-                                    }
-                                }
-
+                                TxNetworkCard(chain)
+                                TxFeeCard(vm, chain, editor, busy)
                                 SimulationCard(vm, chain, p)
 
                                 // native sends: amount plus the most the fee can be
@@ -663,140 +616,65 @@ fun SendScreen(
                                     }
                                 }
 
-                                // advanced
-                                TxCard(Modifier.clickable { advanced = !advanced }) {
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .height(32.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                TxAdvanced {
+                                    TxPlanRows(editor, busy)
+                                    TxLabel("Exact amount", top = 12)
+                                    TxMono(
+                                        if (tk != null && ta != null)
+                                            fmt(ta, tk, tk.decimals)
+                                        else fmt(p.value, chain, chain.decimals)
+                                    )
+                                    TxLabel("Exact max fee", top = 12)
+                                    TxMono(fmt(p.maxFeeWei, chain, chain.decimals))
+                                    if (tk != null) {
                                         Text(
-                                            "Advanced details",
+                                            "Token",
                                             fontSize = 15.sp,
                                             color = Dim.Mid,
-                                            modifier = Modifier.weight(1f)
+                                            modifier = Modifier.padding(vertical = 8.dp)
                                         )
-                                        Icon(
-                                            Ic.ChevronDown,
-                                            null,
-                                            Modifier
-                                                .size(18.dp)
-                                                .rotate(if (advanced) 180f else 0f),
-                                            tint = Dim.Mid
+                                        Text("${tk.symbol} (${tk.name})", fontSize = 14.sp)
+                                        Text(
+                                            "Token contract",
+                                            fontSize = 15.sp,
+                                            color = Dim.Mid,
+                                            modifier = Modifier.padding(
+                                                top = 12.dp,
+                                                bottom = 8.dp
+                                            )
                                         )
+                                        TxMono(tk.address)
                                     }
-                                    if (advanced) {
-                                        Spacer(Modifier.height(8.dp))
-                                        Row(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .clickable(enabled = !busy) { nonceEdit = true }
-                                                .padding(vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                "Nonce",
-                                                fontSize = 15.sp,
-                                                color = Dim.Mid,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            Text(
-                                                p.nonce.toString(),
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                            Spacer(Modifier.width(10.dp))
-                                            Icon(
-                                                Ic.Edit,
-                                                "Edit nonce",
-                                                Modifier.size(16.dp),
-                                                tint = Dim.Mid
-                                            )
-                                        }
-                                        Row(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .clickable(enabled = !busy) { gasEdit = true }
-                                                .padding(vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                "Gas limit",
-                                                fontSize = 15.sp,
-                                                color = Dim.Mid,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            Text(
-                                                p.gasLimit.toString(),
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                            Spacer(Modifier.width(10.dp))
-                                            Icon(
-                                                Ic.Edit,
-                                                "Edit gas limit",
-                                                Modifier.size(16.dp),
-                                                tint = Dim.Mid
-                                            )
-                                        }
-                                        TxLabel("Exact amount", top = 12)
-                                        TxMono(
-                                            if (tk != null && ta != null)
-                                                fmt(ta, tk, tk.decimals)
-                                            else fmt(p.value, chain, chain.decimals)
-                                        )
-                                        TxLabel("Exact max fee", top = 12)
-                                        TxMono(fmt(p.maxFeeWei, chain, chain.decimals))
-                                        if (tk != null) {
-                                            Text(
-                                                "Token",
-                                                fontSize = 15.sp,
-                                                color = Dim.Mid,
-                                                modifier = Modifier.padding(vertical = 8.dp)
-                                            )
-                                            Text("${tk.symbol} (${tk.name})", fontSize = 14.sp)
-                                            Text(
-                                                "Token contract",
-                                                fontSize = 15.sp,
-                                                color = Dim.Mid,
-                                                modifier = Modifier.padding(
-                                                    top = 12.dp,
-                                                    bottom = 8.dp
-                                                )
-                                            )
-                                            TxMono(tk.address)
-                                        }
+                                    Text(
+                                        "Recipient",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                                    )
+                                    TxMono(dest)
+                                    if (resolved != null) {
                                         Text(
-                                            "Recipient",
+                                            "ENS name",
                                             fontSize = 15.sp,
                                             color = Dim.Mid,
-                                            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
-                                        )
-                                        TxMono(dest)
-                                        if (resolved != null) {
-                                            Text(
-                                                "ENS name",
-                                                fontSize = 15.sp,
-                                                color = Dim.Mid,
-                                                modifier = Modifier.padding(
-                                                    top = 12.dp,
-                                                    bottom = 8.dp
-                                                )
+                                            modifier = Modifier.padding(
+                                                top = 12.dp,
+                                                bottom = 8.dp
                                             )
-                                            Text(ensName ?: "", fontSize = 14.sp)
-                                        }
-                                        Text(
-                                            "Data",
-                                            fontSize = 15.sp,
-                                            color = Dim.Mid,
-                                            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
                                         )
-                                        if (p.data.isEmpty()) Text(
-                                            "No data",
-                                            fontSize = 14.sp
-                                        ) else TxMono(p.data)
+                                        Text(ensName ?: "", fontSize = 14.sp)
                                     }
+                                    Text(
+                                        "Data",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                                    )
+                                    if (p.data.isEmpty()) Text(
+                                        "No data",
+                                        fontSize = 14.sp
+                                    ) else TxMono(p.data)
+
                                 }
                             }
                             error?.let {
@@ -815,7 +693,7 @@ fun SendScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 OutlineButton(
                                     "Back",
-                                    onClick = { if (!busy) plan = null },
+                                    onClick = { if (!busy) editor.clear() },
                                     modifier = Modifier.weight(1f)
                                 )
                                 PrimaryButton(
@@ -1217,30 +1095,7 @@ fun SendScreen(
         }
     }
 
-    val ep = plan
-    val eb = basePlan
-    if (feeEdit && ep != null && eb != null) {
-        TxFeeDialog(
-            plan = ep, base = eb,
-            onSave = { plan = ep.copy(fee = it); feeEdit = false },
-            onDismiss = { feeEdit = false }
-        )
-    }
-    if (nonceEdit && ep != null) {
-        TxNonceDialog(
-            current = ep.nonce,
-            onSave = { plan = ep.copy(nonce = it); nonceEdit = false },
-            onDismiss = { nonceEdit = false }
-        )
-    }
-    if (gasEdit && ep != null && eb != null) {
-        TxGasDialog(
-            current = ep.gasLimit,
-            base = eb.gasLimit,
-            onSave = { plan = ep.copy(gasLimit = it); gasEdit = false },
-            onDismiss = { gasEdit = false }
-        )
-    }
+    PlanEditorDialogs(editor)
 
     if (addToken) TokenDialog(chain, vm.tokenRepo) { addToken = false }
 

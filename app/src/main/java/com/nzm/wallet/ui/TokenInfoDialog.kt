@@ -85,18 +85,7 @@ fun TokenInfoDialog(
             TxRow("Decimals", token.decimals.toString())
         }
 
-        TxCard {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(36.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Network", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
-            }
-        }
+        TxNetworkCard(chain)
 
         // tap to copy
         TxCard(Modifier.clickable {

@@ -9,13 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,10 +24,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,7 +36,6 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.abi.SelectorLookup
 import com.nzm.wallet.chain.SendTx
-import com.nzm.wallet.chain.TxPlan
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.storage.Vault
@@ -252,23 +246,17 @@ fun WcRequestScreen(
         }
     }
 
-    var plan by remember { mutableStateOf<TxPlan?>(null) }
-    var basePlan by remember { mutableStateOf<TxPlan?>(null) }
+    val editor = rememberPlanEditor()
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var advanced by remember { mutableStateOf(false) }
     var siteInfo by remember { mutableStateOf(false) }
-    var feeEdit by remember { mutableStateOf(false) }
-    var nonceEdit by remember { mutableStateOf(false) }
-    var gasEdit by remember { mutableStateOf(false) }
 
     if (parsed is Parsed.Tx && chain != null && signerNow != null) {
         LaunchedEffect(item) {
             try {
                 val p =
                     SendTx.plan(chain, signerNow, parsed.t.to, parsed.t.value, data = parsed.t.data)
-                plan = p
-                basePlan = p
+                editor.load(p)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -315,7 +303,7 @@ fun WcRequestScreen(
         is Parsed.Bad -> "Request"
     }
     val canApprove = !blocked && !busy && when (parsed) {
-        is Parsed.Tx -> plan != null
+        is Parsed.Tx -> editor.plan != null
         is Parsed.Bad -> false
         else -> true
     }
@@ -334,7 +322,7 @@ fun WcRequestScreen(
                     is Parsed.Msg -> asSigner { WcSigner.signPersonal(it, parsed.m.bytes) }
                     is Parsed.Typed -> asSigner { WcSigner.signTyped(it, parsed.t) }
                     is Parsed.Tx -> {
-                        val pl = plan ?: return@launch
+                        val pl = editor.plan ?: return@launch
                         val desc = WcSigner.describe(parsed.t, tokens).first
                         vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
                         asSigner { SendTx.signAndSend(pl, it) }
@@ -475,30 +463,7 @@ fun WcRequestScreen(
                         }
                     }
 
-                    // network
-                    if (chain != null) {
-                        TxCard {
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(36.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "Network",
-                                    fontSize = 15.sp,
-                                    color = Dim.Mid,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                if (chain.isTestnet) Text(
-                                    "  testnet",
-                                    fontSize = 13.sp,
-                                    color = Dim.Mid
-                                )
-                            }
-                        }
-                    }
+                    if (chain != null) TxNetworkCard(chain)
 
                     // what the request is, in words
                     when (parsed) {
@@ -558,58 +523,17 @@ fun WcRequestScreen(
                         else -> {}
                     }
 
-                    // max fee, tap to change
                     if (parsed is Parsed.Tx && chain != null) {
-                        val p = plan
-                        TxCard(Modifier.clickable(enabled = p != null && !busy) {
-                            feeEdit = true
-                        }) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Max fee", fontSize = 15.sp, color = Dim.Mid)
-                                    if (p != null && p != basePlan && p.fee != basePlan?.fee)
-                                        Text("Edited", fontSize = 12.sp, color = Dim.Accent)
-                                }
-                                if (p == null) {
-                                    Text(
-                                        if (error == null) "Preparing…" else "Unavailable",
-                                        fontSize = 15.sp,
-                                        color = Dim.Mid
-                                    )
-                                } else {
-                                    val fiat = if (chain.chainId == vm.selected?.chainId) vm.fiat(
-                                        null,
-                                        p.maxFeeWei
-                                    ) else null
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            fiat ?: (fmt(
-                                                p.maxFeeWei,
-                                                chain,
-                                                8
-                                            )),
-                                            fontSize = 16.sp, fontWeight = FontWeight.SemiBold
-                                        )
-                                        if (fiat != null) Text(
-                                            fmt(
-                                                p.maxFeeWei,
-                                                chain,
-                                                8
-                                            ),
-                                            fontSize = 12.sp, color = Dim.Mid
-                                        )
-                                    }
-                                    Spacer(Modifier.width(10.dp))
-                                    Icon(Ic.Edit, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
-                                }
-                            }
-                        }
+                        TxFeeCard(
+                            vm,
+                            chain,
+                            editor,
+                            busy,
+                            waiting = if (error == null) "Preparing…" else "Unavailable"
+                        )
                     }
 
-                    if (parsed is Parsed.Tx && chain != null) plan?.let {
+                    if (parsed is Parsed.Tx && chain != null) editor.plan?.let {
                         SimulationCard(
                             vm,
                             chain,
@@ -617,146 +541,69 @@ fun WcRequestScreen(
                         )
                     }
 
-                    // advanced
                     if (parsed !is Parsed.Bad) {
-                        TxCard(Modifier.clickable { advanced = !advanced }) {
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(32.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "Advanced details",
-                                    fontSize = 15.sp,
-                                    color = Dim.Mid,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Icon(
-                                    Ic.ChevronDown,
-                                    null,
-                                    Modifier
-                                        .size(18.dp)
-                                        .rotate(if (advanced) 180f else 0f),
-                                    tint = Dim.Mid
-                                )
-                            }
-                            if (advanced) {
-                                Spacer(Modifier.height(8.dp))
-                                when (parsed) {
-                                    is Parsed.Tx -> {
-                                        val p = plan
-                                        if (p != null) {
-                                            Row(
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable(enabled = !busy) { nonceEdit = true }
-                                                    .padding(vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    "Nonce",
-                                                    fontSize = 15.sp,
-                                                    color = Dim.Mid,
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                                Text(
-                                                    p.nonce.toString(),
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                                Spacer(Modifier.width(10.dp))
-                                                Icon(
-                                                    Ic.Edit,
-                                                    "Edit nonce",
-                                                    Modifier.size(16.dp),
-                                                    tint = Dim.Mid
-                                                )
-                                            }
-                                            Row(
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable(enabled = !busy) { gasEdit = true }
-                                                    .padding(vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    "Gas limit",
-                                                    fontSize = 15.sp,
-                                                    color = Dim.Mid,
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                                Text(
-                                                    p.gasLimit.toString(),
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                                Spacer(Modifier.width(10.dp))
-                                                Icon(
-                                                    Ic.Edit,
-                                                    "Edit gas limit",
-                                                    Modifier.size(16.dp),
-                                                    tint = Dim.Mid
-                                                )
-                                            }
-                                            summary?.exact?.let {
-                                                TxLabel("Exact amount", top = 12)
-                                                TxMono(it)
-                                            }
+                        TxAdvanced {
+                            when (parsed) {
+                                is Parsed.Tx -> {
+                                    if (editor.plan != null) {
+                                        TxPlanRows(editor, busy)
+                                        summary?.exact?.let {
+                                            TxLabel("Exact amount", top = 12)
+                                            TxMono(it)
                                         }
+                                    }
+                                    Text(
+                                        "To",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                    TxMono(parsed.t.to)
+                                    Text(
+                                        "Data",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                    if (parsed.t.data.isEmpty()) Text(
+                                        "No data",
+                                        fontSize = 14.sp
+                                    ) else TxMono(parsed.t.data)
+                                    if (summary != null && !summary.plain) {
                                         Text(
-                                            "To",
+                                            "Decoded",
                                             fontSize = 15.sp,
                                             color = Dim.Mid,
-                                            modifier = Modifier.padding(vertical = 8.dp)
+                                            modifier = Modifier.padding(
+                                                top = 12.dp,
+                                                bottom = 4.dp
+                                            )
                                         )
-                                        TxMono(parsed.t.to)
                                         Text(
-                                            "Data",
-                                            fontSize = 15.sp,
-                                            color = Dim.Mid,
-                                            modifier = Modifier.padding(vertical = 8.dp)
-                                        )
-                                        if (parsed.t.data.isEmpty()) Text(
-                                            "No data",
+                                            WcSigner.describe(parsed.t, tokens).first,
                                             fontSize = 14.sp
-                                        ) else TxMono(parsed.t.data)
-                                        if (summary != null && !summary.plain) {
-                                            Text(
-                                                "Decoded",
-                                                fontSize = 15.sp,
-                                                color = Dim.Mid,
-                                                modifier = Modifier.padding(
-                                                    top = 12.dp,
-                                                    bottom = 4.dp
-                                                )
-                                            )
-                                            Text(
-                                                WcSigner.describe(parsed.t, tokens).first,
-                                                fontSize = 14.sp
-                                            )
-                                        }
-                                    }
-
-                                    is Parsed.Msg -> {
-                                        Text(
-                                            "Raw message (hex)",
-                                            fontSize = 15.sp,
-                                            color = Dim.Mid,
-                                            modifier = Modifier.padding(vertical = 8.dp)
                                         )
-                                        TxMono(Numeric.toHexString(parsed.m.bytes))
                                     }
+                                }
 
-                                    is Parsed.Typed -> {
-                                        Text(
-                                            "Raw typed data",
-                                            fontSize = 15.sp,
-                                            color = Dim.Mid,
-                                            modifier = Modifier.padding(vertical = 8.dp)
-                                        )
-                                        TxMono(parsed.t.json)
-                                    }
+                                is Parsed.Msg -> {
+                                    Text(
+                                        "Raw message (hex)",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                    TxMono(Numeric.toHexString(parsed.m.bytes))
+                                }
+
+                                is Parsed.Typed -> {
+                                    Text(
+                                        "Raw typed data",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                    TxMono(parsed.t.json)
                                 }
                             }
                         }
@@ -803,28 +650,5 @@ fun WcRequestScreen(
         )
     }
 
-    val p = plan
-    val base = basePlan
-    if (feeEdit && p != null && base != null) {
-        TxFeeDialog(
-            plan = p, base = base,
-            onSave = { plan = p.copy(fee = it); feeEdit = false },
-            onDismiss = { feeEdit = false }
-        )
-    }
-    if (nonceEdit && p != null) {
-        TxNonceDialog(
-            current = p.nonce,
-            onSave = { plan = p.copy(nonce = it); nonceEdit = false },
-            onDismiss = { nonceEdit = false }
-        )
-    }
-    if (gasEdit && p != null && base != null) {
-        TxGasDialog(
-            current = p.gasLimit,
-            base = base.gasLimit,
-            onSave = { plan = p.copy(gasLimit = it); gasEdit = false },
-            onDismiss = { gasEdit = false }
-        )
-    }
+    PlanEditorDialogs(editor)
 }
