@@ -1,7 +1,6 @@
 package com.nzm.wallet.ui
 
 import android.content.ClipboardManager
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,7 +52,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
-import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.chain.Ens
 import com.nzm.wallet.chain.Erc20
@@ -106,7 +104,7 @@ fun SendScreen(
     var ensError by remember { mutableStateOf<String?>(null) }
     val editor = rememberPlanEditor()
     var hash by remember { mutableStateOf<String?>(null) }
-    var result by remember { mutableStateOf("Pending...") }
+    val result = rememberTxResult(chain, hash)
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var chainMenu by remember { mutableStateOf(false) }
@@ -171,21 +169,6 @@ fun SendScreen(
             ensError = e.message ?: "Could not resolve"
         } finally {
             resolving = false
-        }
-    }
-
-    LaunchedEffect(hash) {
-        val tx = hash ?: return@LaunchedEffect
-        result = try {
-            when (SendTx.waitForReceipt(chain.rpcUrl, tx)) {
-                true -> "Confirmed"
-                false -> "FAILED (reverted)"
-                null -> "Not mined yet. Check explorer."
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            "Status unknown: ${e.message}"
         }
     }
 
@@ -478,50 +461,12 @@ fun SendScreen(
                                         )
                                     }
                                 }
-                                TxCard {
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .height(36.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            "Status",
-                                            fontSize = 15.sp,
-                                            color = Dim.Mid,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Text(
-                                            result,
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = when {
-                                                result == "Confirmed" -> TxOk
-                                                result.startsWith("FAILED") -> Dim.Danger
-                                                else -> Dim.Ink
-                                            }
-                                        )
-                                    }
-                                    TxLine()
-                                    Text(
-                                        "Transaction hash",
-                                        fontSize = 14.sp,
-                                        color = Dim.Mid,
-                                        modifier = Modifier.padding(top = 10.dp, bottom = 6.dp)
-                                    )
-                                    TxMono(h)
-                                    Spacer(Modifier.height(4.dp))
-                                }
+                                TxStatusCard(result, h)
                             }
                             if (chain.explorerUrl != null) {
-                                OutlineButton("View on explorer", onClick = {
-                                    activity.startActivity(
-                                        Intent(
-                                            Intent.ACTION_VIEW,
-                                            "${chain.explorerUrl}/tx/$h".toUri()
-                                        )
-                                    )
-                                })
+                                OutlineButton(
+                                    "View on explorer",
+                                    onClick = { openTx(activity, chain, h) })
                                 Spacer(Modifier.height(12.dp))
                             }
                             PrimaryButton("Done", onClick = { onClose(true) })

@@ -1,6 +1,5 @@
 package com.nzm.wallet.ui
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +17,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,7 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.abi.AbiCodec
 import com.nzm.wallet.abi.AbiFn
@@ -118,7 +115,7 @@ fun ContractDialog(
     val editor = rememberPlanEditor()
     var readResult by remember { mutableStateOf<List<String>?>(null) }
     var hash by remember { mutableStateOf<String?>(null) }
-    var status by remember { mutableStateOf("Pending...") }
+    val status = rememberTxResult(chain, hash)
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var saveDialog by remember { mutableStateOf(false) }
@@ -138,21 +135,6 @@ fun ContractDialog(
             } finally {
                 busy = false
             }
-        }
-    }
-
-    LaunchedEffect(hash) {
-        val h = hash ?: return@LaunchedEffect
-        status = try {
-            when (SendTx.waitForReceipt(chain.rpcUrl, h)) {
-                true -> "Confirmed"
-                false -> "FAILED (reverted)"
-                null -> "Not mined yet. Check explorer."
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            "Status unknown: ${e.message}"
         }
     }
 
@@ -209,20 +191,7 @@ fun ContractDialog(
         onDismiss = { if (!busy && h == null) goBack() },
         bottom = {
             when {
-                h != null -> {
-                    if (chain.explorerUrl != null) {
-                        OutlineButton("Explorer", {
-                            activity.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    "${chain.explorerUrl}/tx/$h".toUri()
-                                )
-                            )
-                        }, Modifier.weight(1f))
-                    }
-                    PrimaryButton("Done", { onClose(true) }, Modifier.weight(1f))
-                }
-
+                h != null -> TxSentButtons(activity, chain, h) { onClose(true) }
                 p != null && prep != null -> {
                     OutlineButton("Back", { goBack() }, Modifier.weight(1f))
                     PrimaryButton(
@@ -261,20 +230,7 @@ fun ContractDialog(
                     TxLine()
                     TxPartyRow("Contract", contractParty(vm, p?.to ?: contract, savedNow))
                 }
-                TxCard {
-                    TxRow(
-                        "Status", status,
-                        when {
-                            status == "Confirmed" -> TxOk
-                            status.startsWith("FAILED") -> Dim.Danger
-                            else -> Dim.Ink
-                        }
-                    )
-                    TxLine()
-                    TxLabel("Transaction hash")
-                    TxMono(h)
-                    Spacer(Modifier.height(4.dp))
-                }
+                TxStatusCard(status, h)
             }
 
             // ---------- review ----------

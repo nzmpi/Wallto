@@ -1,6 +1,5 @@
 package com.nzm.wallet.ui
 
-import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.chain.Rpc.isContract
 import com.nzm.wallet.chain.SendTx
@@ -53,7 +51,7 @@ fun DelegationDialog(
     val editor = rememberPlanEditor()
     var understood by remember { mutableStateOf(false) }
     var hash by remember { mutableStateOf<String?>(null) }
-    var result by remember { mutableStateOf("Pending...") }
+    val result = rememberTxResult(chain, hash)
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var changed by remember { mutableStateOf(false) }
@@ -71,21 +69,8 @@ fun DelegationDialog(
         loaded = true
     }
 
-    LaunchedEffect(hash) {
-        val h = hash ?: return@LaunchedEffect
-        result = try {
-            when (SendTx.waitForReceipt(chain.rpcUrl, h)) {
-                true -> "Confirmed"
-                false -> "FAILED (reverted)"
-                null -> "Not mined yet. Check explorer."
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            "Status unknown: ${e.message}"
-        }
-        if (result == "Confirmed") changed = true
-    }
+    LaunchedEffect(result) { if (result == "Confirmed") changed = true }
+
 
     val p = editor.plan
     val h = hash
@@ -140,20 +125,7 @@ fun DelegationDialog(
         onDismiss = { if (!busy && h == null) goBack() },
         bottom = {
             when {
-                h != null -> {
-                    if (chain.explorerUrl != null) {
-                        OutlineButton("Explorer", {
-                            activity.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    "${chain.explorerUrl}/tx/$h".toUri()
-                                )
-                            )
-                        }, Modifier.weight(1f))
-                    }
-                    PrimaryButton("Done", { onClose(changed) }, Modifier.weight(1f))
-                }
-
+                h != null -> TxSentButtons(activity, chain, h) { onClose(changed) }
                 p != null && tgt != null -> {
                     OutlineButton("Back", { goBack() }, Modifier.weight(1f))
                     PrimaryButton(
@@ -185,20 +157,7 @@ fun DelegationDialog(
                     if (revoke) "Delegation revoked" else "Delegation set",
                     Delegation.knownName(tgt) ?: ""
                 )
-                TxCard {
-                    TxRow(
-                        "Status", result,
-                        when {
-                            result == "Confirmed" -> TxOk
-                            result.startsWith("FAILED") -> Dim.Danger
-                            else -> Dim.Ink
-                        }
-                    )
-                    TxLine()
-                    TxLabel("Transaction hash")
-                    TxMono(h)
-                    Spacer(Modifier.height(4.dp))
-                }
+                TxStatusCard(result, h)
             }
 
             // ---------- review ----------

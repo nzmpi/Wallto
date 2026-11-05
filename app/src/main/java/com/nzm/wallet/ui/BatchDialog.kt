@@ -1,9 +1,16 @@
 package com.nzm.wallet.ui
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -11,7 +18,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,10 +34,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.abi.AbiCodec
-import com.nzm.wallet.chain.*
+import com.nzm.wallet.chain.Erc20
+import com.nzm.wallet.chain.Rpc
+import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
@@ -60,7 +75,8 @@ fun BatchDialog(
     var statusError by remember { mutableStateOf<String?>(null) }
     val editor = rememberPlanEditor()
     var hash by remember { mutableStateOf<String?>(null) }
-    var result by remember { mutableStateOf("Pending...") }
+    val result = rememberTxResult(chain, hash)
+
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -73,21 +89,6 @@ fun BatchDialog(
             throw e
         } catch (e: Exception) {
             statusError = e.message ?: "Could not check the account"
-        }
-    }
-
-    LaunchedEffect(hash) {
-        val h = hash ?: return@LaunchedEffect
-        result = try {
-            when (SendTx.waitForReceipt(chain.rpcUrl, h)) {
-                true -> "Confirmed"
-                false -> "FAILED (reverted)"
-                null -> "Not mined yet. Check explorer."
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            "Status unknown: ${e.message}"
         }
     }
 
@@ -130,20 +131,7 @@ fun BatchDialog(
         onDismiss = { if (!busy && h == null) goBack() },
         bottom = {
             when {
-                h != null -> {
-                    if (chain.explorerUrl != null) {
-                        OutlineButton("Explorer", {
-                            activity.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    "${chain.explorerUrl}/tx/$h".toUri()
-                                )
-                            )
-                        }, Modifier.weight(1f))
-                    }
-                    PrimaryButton("Done", { onClose(true) }, Modifier.weight(1f))
-                }
-
+                h != null -> TxSentButtons(activity, chain, h) { onClose(true) }
                 p != null -> {
                     OutlineButton("Back", { goBack() }, Modifier.weight(1f))
                     PrimaryButton(
@@ -179,20 +167,7 @@ fun BatchDialog(
             h != null -> {
                 PageHeader("Sent") { onClose(true) }
                 TxAmount("Batch sent", "${items.size} call${if (items.size == 1) "" else "s"}")
-                TxCard {
-                    TxRow(
-                        "Status", result,
-                        when {
-                            result == "Confirmed" -> TxOk
-                            result.startsWith("FAILED") -> Dim.Danger
-                            else -> Dim.Ink
-                        }
-                    )
-                    TxLine()
-                    TxLabel("Transaction hash")
-                    TxMono(h)
-                    Spacer(Modifier.height(4.dp))
-                }
+                TxStatusCard(result, h)
             }
 
             // ---------- review ----------

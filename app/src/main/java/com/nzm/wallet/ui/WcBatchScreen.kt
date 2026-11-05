@@ -1,14 +1,9 @@
 package com.nzm.wallet.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,7 +15,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
@@ -212,7 +206,6 @@ fun WcBatchScreen(
     val editor = rememberPlanEditor()
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var siteInfo by remember { mutableStateOf(false) }
 
     if (parsed is Req.Ok && signerNow != null) {
         LaunchedEffect(item) {
@@ -330,38 +323,15 @@ fun WcBatchScreen(
         }
     ) {
         PageHeader("Send batch") { reject() }
-
-        Column(
-            Modifier
-                .clickable { siteInfo = true }
-                .padding(top = 4.dp)) {
-            Text(
-                site?.name?.ifBlank { null } ?: "Unknown site",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (verified) TxOk else Dim.Danger,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                site?.url ?: "",
-                fontSize = 14.sp,
-                color = Dim.Mid,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (blocked) Text(warn, fontSize = 14.sp, color = Dim.Danger)
-        if (signerRow != null && signerNow != null && !isActive) {
-            Text(
-                "Not your active wallet. This will be signed by ${signerRow.name} (${
-                    shortAddress(
-                        signerNow
-                    )
-                }).",
-                fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger
-            )
-        }
+        WcSiteHeader(
+            name = site?.name,
+            url = site?.url,
+            verified = verified,
+            warn = warn,
+            blocked = blocked,
+            otherWallet = if (signerRow != null && signerNow != null && !isActive)
+                "${signerRow.name} (${shortAddress(signerNow)})" else null
+        )
 
         when (parsed) {
             is Req.Bad -> Text(parsed.why, fontSize = 15.sp, color = Dim.Danger)
@@ -457,20 +427,6 @@ fun WcBatchScreen(
             }
         }
         error?.let { Text(it, fontSize = 14.sp, color = Dim.Danger) }
-    }
-
-    if (siteInfo) {
-        AlertDialog(
-            onDismissRequest = { siteInfo = false },
-            title = { Text("Domain check") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(warn, color = if (blocked || !verified) Dim.Danger else TxOk)
-                    Text("Site says: ${site?.url ?: "unknown"}", fontSize = 14.sp, color = Dim.Mid)
-                }
-            },
-            confirmButton = { TextButton(onClick = { siteInfo = false }) { Text("Close") } }
-        )
     }
 
     PlanEditorDialogs(editor)

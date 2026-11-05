@@ -414,3 +414,58 @@ fun rememberBatchSupport(chain: Chain?, account: String): Boolean {
     }
     return ok
 }
+
+@Composable
+internal fun WcSiteHeader(
+    name: String?,
+    url: String?,
+    verified: Boolean,
+    warn: String,
+    blocked: Boolean,
+    otherWallet: String?
+) {
+    var info by remember { mutableStateOf(false) }
+
+    Column(
+        Modifier
+            .clickable { info = true }
+            .padding(top = 4.dp)
+    ) {
+        Text(
+            name?.ifBlank { null } ?: "Unknown site",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (verified) TxOk else Dim.Danger,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            url ?: "",
+            fontSize = 14.sp,
+            color = Dim.Mid,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+    if (blocked) Text(warn, fontSize = 14.sp, color = Dim.Danger)
+    if (otherWallet != null) {
+        Text(
+            "Not your active wallet. This will be signed by $otherWallet.",
+            fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger
+        )
+    }
+
+    if (info) {
+        AlertDialog(
+            onDismissRequest = { info = false },
+            title = { Text("Domain check") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(warn, color = if (blocked || !verified) Dim.Danger else TxOk)
+                    Text("Site says: ${url ?: "unknown"}", fontSize = 14.sp, color = Dim.Mid)
+                }
+            },
+            confirmButton = { TextButton(onClick = { info = false }) { Text("Close") } }
+        )
+    }
+}
