@@ -23,6 +23,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Kanal"
+rootProject.name = "Wallto"
 include(":app")
  
