@@ -17,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -46,12 +45,9 @@ import com.nzm.wallet.wc.WcSigner
 import com.nzm.wallet.wc.WcTx
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import org.web3j.crypto.Credentials
 import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
 import java.math.BigInteger
-import kotlin.time.Duration.Companion.milliseconds
 
 /** Returns (line, blocked). Blocked sites cannot be approved. */
 internal fun verdict(v: Wallet.Model.VerifyContext): Pair<String, Boolean> = when {
@@ -192,22 +188,17 @@ fun WcRequestScreen(
     val verified = isVerified(item.verify)
     val site = req.peerMetaData
 
-    val signer by produceState(WcService.sessionAddress(req.topic), item) {
-        var tries = 0
-        while (value == null && tries < 10) {
-            delay(300.milliseconds)
-            value = WcService.sessionAddress(req.topic)
-            tries++
-        }
-    }
-    val signerNow = signer
-    val signerRow = vm.wallets.firstOrNull { it.address.equals(signer, ignoreCase = true) }
-        ?: if (signer != null && signer.equals(
-                address,
-                ignoreCase = true
-            )
-        ) vm.activeWallet else null
-    val isActive = signer != null && signer.equals(address, ignoreCase = true)
+    val session = rememberSessionSigner(
+        vault = vault,
+        activity = activity,
+        vm = vm,
+        address = address,
+        topic = req.topic,
+        key = item
+    )
+    val signerNow = session.address
+    val signerRow = session.row
+    val isActive = session.isActive
 
     val parsed = remember(item, signerRow?.id, signerNow) {
         if (chain == null) Parsed.Bad("Chain ${req.chainId} is not saved in this wallet. Add it first.")
@@ -258,19 +249,6 @@ fun WcRequestScreen(
         }
     }
 
-    suspend fun <T> asSigner(block: suspend (Credentials) -> T): T {
-        val row = signerRow ?: error("Wallet not found")
-        return vault.withCredentials(activity, row.id) { c ->
-            check(
-                c.address.equals(
-                    signer,
-                    ignoreCase = true
-                )
-            ) { "Wallet key does not match the site's account" }
-            block(c)
-        }
-    }
-
     val tokens =
         if (chain != null && chain.chainId == vm.selected?.chainId) vm.tokens else emptyList()
     val summary =
@@ -309,13 +287,13 @@ fun WcRequestScreen(
         if (!canApprove) return
         runner.launch {
             val result: String = when (parsed) {
-                is Parsed.Msg -> asSigner { WcSigner.signPersonal(it, parsed.m.bytes) }
-                is Parsed.Typed -> asSigner { WcSigner.signTyped(it, parsed.t) }
+                is Parsed.Msg -> session.sign { WcSigner.signPersonal(it, parsed.m.bytes) }
+                is Parsed.Typed -> session.sign { WcSigner.signTyped(it, parsed.t) }
                 is Parsed.Tx -> {
                     val pl = editor.plan ?: return@launch
                     val desc = WcSigner.describe(parsed.t, tokens).first
                     vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
-                    asSigner { SendTx.signAndSend(pl, it) }
+                    session.sign { SendTx.signAndSend(pl, it) }
                 }
 
                 is Parsed.Bad -> return@launch
@@ -356,8 +334,7 @@ fun WcRequestScreen(
                         verified = verified,
                         warn = warn,
                         blocked = blocked,
-                        otherWallet = if (signerRow != null && signerNow != null && !isActive)
-                            "${signerRow.name} (${shortAddress(signerNow)})" else null
+                        otherWallet = session.otherWallet
                     )
 
                     // amount

@@ -12,11 +12,38 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,13 +55,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.dbs.WalletRow
+import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Helpers.shortAddress
+import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.web3j.crypto.Credentials
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
@@ -499,4 +531,52 @@ class BusyRunner(private val scope: CoroutineScope) {
 fun rememberBusyRunner(): BusyRunner {
     val scope = rememberCoroutineScope()
     return remember { BusyRunner(scope) }
+}
+
+@Stable
+class SessionSigner(
+    val address: String?,
+    val row: WalletRow?,
+    val isActive: Boolean,
+    private val vault: Vault,
+    private val activity: FragmentActivity
+) {
+    val otherWallet: String?
+        get() = if (row != null && address != null && !isActive)
+            "${row.name} (${shortAddress(address)})" else null
+
+    suspend fun <T> sign(block: suspend (Credentials) -> T): T {
+        val r = row ?: error("Wallet not found")
+        val a = address ?: error("Wallet not found")
+        return vault.withCredentials(activity, r.id) { c ->
+            check(c.address.equals(a, ignoreCase = true)) {
+                "Wallet key does not match the site's account"
+            }
+            block(c)
+        }
+    }
+}
+
+@Composable
+fun rememberSessionSigner(
+    vm: WalletViewModel,
+    vault: Vault,
+    activity: FragmentActivity,
+    address: String,
+    topic: String,
+    key: Any
+): SessionSigner {
+    val signer by produceState(WcService.sessionAddress(topic), key) {
+        var tries = 0
+        while (value == null && tries < 10) {
+            delay(300.milliseconds)
+            value = WcService.sessionAddress(topic)
+            tries++
+        }
+    }
+    val s = signer
+    val row = vm.wallets.firstOrNull { it.address.equals(s, ignoreCase = true) }
+        ?: if (s != null && s.equals(address, ignoreCase = true)) vm.activeWallet else null
+    val active = s != null && s.equals(address, ignoreCase = true)
+    return SessionSigner(s, row, active, vault, activity)
 }

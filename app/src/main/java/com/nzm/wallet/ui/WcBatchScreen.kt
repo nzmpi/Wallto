@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -31,15 +30,12 @@ import com.nzm.wallet.utils.Helpers.shortAmount
 import com.nzm.wallet.wc.WcService
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
-import org.web3j.crypto.Credentials
 import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
 import java.math.BigInteger
 import java.security.SecureRandom
-import kotlin.time.Duration.Companion.milliseconds
 
 private sealed interface Req {
     class Ok(val version: String, val id: String, val chain: Chain, val items: List<BatchItem>) :
@@ -165,22 +161,17 @@ fun WcBatchScreen(
     val verified =
         item.verify.isScam != true && item.verify.validation == Wallet.Model.Validation.VALID
 
-    val signer by produceState(WcService.sessionAddress(req.topic), item) {
-        var tries = 0
-        while (value == null && tries < 10) {
-            delay(300.milliseconds)
-            value = WcService.sessionAddress(req.topic)
-            tries++
-        }
-    }
-    val signerNow = signer
-    val signerRow = vm.wallets.firstOrNull { it.address.equals(signerNow, ignoreCase = true) }
-        ?: if (signerNow != null && signerNow.equals(
-                address,
-                ignoreCase = true
-            )
-        ) vm.activeWallet else null
-    val isActive = signerNow != null && signerNow.equals(address, ignoreCase = true)
+    val session = rememberSessionSigner(
+        vault = vault,
+        activity = activity,
+        vm = vm,
+        address = address,
+        topic = req.topic,
+        key = item
+    )
+    val signerNow = session.address
+    val signerRow = session.row
+    val isActive = session.isActive
 
     val parsed = remember(item, signerRow?.id, signerNow) {
         when {
@@ -264,15 +255,9 @@ fun WcBatchScreen(
     fun approve() {
         if (!canSend) return
         val pl = editor.plan ?: return
-        val row = signerRow ?: return
         runner.launch {
             vm.annotateNext(site?.name ?: site?.url, "Batch of ${parsed.items.size} calls")
-            val hash = vault.withCredentials(activity, row.id) { c: Credentials ->
-                check(c.address.equals(signerNow, ignoreCase = true)) {
-                    "Wallet key does not match the site's account"
-                }
-                SendTx.signAndSend(pl, c)
-            }
+            val hash = session.sign { c -> SendTx.signAndSend(pl, c) }
             val bundleId = parsed.id.ifBlank {
                 "0x" + ByteArray(32).also { SecureRandom().nextBytes(it) }
                     .joinToString("") { "%02x".format(it) }
@@ -312,8 +297,7 @@ fun WcBatchScreen(
             verified = verified,
             warn = warn,
             blocked = blocked,
-            otherWallet = if (signerRow != null && signerNow != null && !isActive)
-                "${signerRow.name} (${shortAddress(signerNow)})" else null
+            otherWallet = session.otherWallet
         )
 
         when (parsed) {
