@@ -448,12 +448,14 @@ fun WcRequestScreen(
                         is Parsed.Tx -> {
                             if (summary != null && !summary.plain && !summary.isTransfer) {
                                 val (desc, danger) = WcSigner.describe(parsed.t, tokens)
-                                TxCard {
-                                    Text(
-                                        desc,
-                                        color = if (danger) Dim.Danger else Dim.Ink,
-                                        fontSize = 14.sp
-                                    )
+                                if ("Not decoded" !in desc) {
+                                    TxCard {
+                                        Text(
+                                            desc,
+                                            color = if (danger) Dim.Danger else Dim.Ink,
+                                            fontSize = 14.sp
+                                        )
+                                    }
                                 }
                             }
                             guess?.let { GuessCard(it) }
@@ -508,21 +510,6 @@ fun WcRequestScreen(
                                         "No data",
                                         fontSize = 14.sp
                                     ) else TxMono(parsed.t.data)
-                                    if (summary != null && !summary.plain) {
-                                        Text(
-                                            "Decoded",
-                                            fontSize = 15.sp,
-                                            color = Dim.Mid,
-                                            modifier = Modifier.padding(
-                                                top = 12.dp,
-                                                bottom = 4.dp
-                                            )
-                                        )
-                                        Text(
-                                            WcSigner.describe(parsed.t, tokens).first,
-                                            fontSize = 14.sp
-                                        )
-                                    }
                                 }
 
                                 is Parsed.Msg -> {

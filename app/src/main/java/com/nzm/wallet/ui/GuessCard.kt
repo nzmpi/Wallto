@@ -47,11 +47,12 @@ fun GuessInfo(g: SelectorLookup.Guess) {
             }
             if (args.size > 8) Text("+ ${args.size - 8} more", fontSize = 12.sp, color = Dim.Mid)
         }
-        Text(
-            "Name from a public database. Anyone can add names, so treat it as a hint, not proof." +
-                    if (g.others > 0) " ${g.others} other name${if (g.others == 1) "" else "s"} share this selector." else "",
-            fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 8.dp)
-        )
+        if (g.others > 0) {
+            Text(
+                "${g.others} other name${if (g.others == 1) "" else "s"} share this selector.",
+                fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 8.dp)
+            )
+        }
     }
 }
 
