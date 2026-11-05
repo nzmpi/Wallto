@@ -19,7 +19,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -48,7 +47,6 @@ import com.nzm.wallet.wc.WcTx
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.web3j.crypto.Credentials
 import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
@@ -193,7 +191,6 @@ fun WcRequestScreen(
     val (warn, blocked) = verdict(item.verify)
     val verified = isVerified(item.verify)
     val site = req.peerMetaData
-    val scope = rememberCoroutineScope()
 
     val signer by produceState(WcService.sessionAddress(req.topic), item) {
         var tries = 0
@@ -243,8 +240,9 @@ fun WcRequestScreen(
     }
 
     val editor = rememberPlanEditor()
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val runner = rememberBusyRunner()
+    val busy = runner.busy
+    val error = runner.error
 
     if (parsed is Parsed.Tx && chain != null && signerNow != null) {
         LaunchedEffect(item) {
@@ -255,7 +253,7 @@ fun WcRequestScreen(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = e.message ?: "Could not prepare transaction"
+                runner.error = e.message ?: "Could not prepare transaction"
             }
         }
     }
@@ -309,31 +307,21 @@ fun WcRequestScreen(
 
     fun approve() {
         if (!canApprove) return
-        scope.launch {
-            busy = true
-            error = null
-            try {
-                val result: String = when (parsed) {
-                    is Parsed.Msg -> asSigner { WcSigner.signPersonal(it, parsed.m.bytes) }
-                    is Parsed.Typed -> asSigner { WcSigner.signTyped(it, parsed.t) }
-                    is Parsed.Tx -> {
-                        val pl = editor.plan ?: return@launch
-                        val desc = WcSigner.describe(parsed.t, tokens).first
-                        vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
-                        asSigner { SendTx.signAndSend(pl, it) }
-                    }
-
-                    is Parsed.Bad -> return@launch
+        runner.launch {
+            val result: String = when (parsed) {
+                is Parsed.Msg -> asSigner { WcSigner.signPersonal(it, parsed.m.bytes) }
+                is Parsed.Typed -> asSigner { WcSigner.signTyped(it, parsed.t) }
+                is Parsed.Tx -> {
+                    val pl = editor.plan ?: return@launch
+                    val desc = WcSigner.describe(parsed.t, tokens).first
+                    vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
+                    asSigner { SendTx.signAndSend(pl, it) }
                 }
-                WcService.respondResult(item, result)
-                if (parsed is Parsed.Tx && isActive) vm.refresh()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
+
+                is Parsed.Bad -> return@launch
             }
+            WcService.respondResult(item, result)
+            if (parsed is Parsed.Tx && isActive) vm.refresh()
         }
     }
 

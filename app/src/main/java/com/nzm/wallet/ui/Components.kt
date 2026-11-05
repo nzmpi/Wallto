@@ -32,7 +32,9 @@ import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Helpers.shortAddress
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
@@ -468,4 +470,33 @@ internal fun WcSiteHeader(
             confirmButton = { TextButton(onClick = { info = false }) { Text("Close") } }
         )
     }
+}
+
+@Stable
+class BusyRunner(private val scope: CoroutineScope) {
+    var busy by mutableStateOf(false)
+        private set
+    var error by mutableStateOf<String?>(null)
+
+    fun launch(block: suspend () -> Unit) {
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = e.message ?: "Failed"
+            } finally {
+                busy = false
+            }
+        }
+    }
+}
+
+@Composable
+fun rememberBusyRunner(): BusyRunner {
+    val scope = rememberCoroutineScope()
+    return remember { BusyRunner(scope) }
 }

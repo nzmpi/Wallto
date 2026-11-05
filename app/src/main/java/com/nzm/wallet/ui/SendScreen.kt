@@ -105,8 +105,9 @@ fun SendScreen(
     val editor = rememberPlanEditor()
     var hash by remember { mutableStateOf<String?>(null) }
     val result = rememberTxResult(chain, hash)
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val runner = rememberBusyRunner()
+    val busy = runner.busy
+    val error = runner.error
     var chainMenu by remember { mutableStateOf(false) }
     var tokenMenu by remember { mutableStateOf(false) }
     var saveDialog by remember { mutableStateOf(false) }
@@ -145,7 +146,7 @@ fun SendScreen(
                 !vm.hasSentTo(a)
 
     // chain or token changed: the old amount no longer applies
-    LaunchedEffect(chain.chainId, tokenAddr) { amount = ""; error = null }
+    LaunchedEffect(chain.chainId, tokenAddr) { amount = ""; runner.error = null }
 
     // ENS name typed in the To field
     LaunchedEffect(to) {
@@ -205,64 +206,43 @@ fun SendScreen(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    error = "Could not estimate the fee: ${e.message}"
+                    runner.error = "Could not estimate the fee: ${e.message}"
                     return@launch
                 }
             }
-            error = null
+            runner.error = null
             amount = BigDecimal(v).movePointLeft(decimals).stripTrailingZeros().toPlainString()
         }
     }
 
-    fun review() {
-        busy = true
-        error = null
-        scope.launch {
-            try {
-                val typed = to.trim()
-                if (Ens.looksLikeName(typed)) require(ensName != null) {
-                    ensError ?: "Name not resolved yet"
-                }
-                val dest = resolved ?: typed
-                require(isValidAddress(dest)) { "Invalid recipient address or checksum" }
-                require(
-                    !dest.equals(
-                        ZERO,
-                        ignoreCase = true
-                    )
-                ) { "Recipient is the zero address" }
-                val units = parseAmount(amount, decimals)
-                val built = if (token == null) {
-                    SendTx.plan(chain, from, dest, units)
-                } else {
-                    require(!dest.equals(token.address, ignoreCase = true)) {
-                        "Recipient is the token contract. Tokens would be lost."
-                    }
-                    val bal = Erc20.balanceOf(chain.rpcUrl, token.address, from)
-                    require(bal >= units) {
-                        "Insufficient ${token.symbol}. You have ${
-                            formatUnits(
-                                bal,
-                                token.decimals,
-                                token.decimals
-                            )
-                        }"
-                    }
-                    SendTx.plan(
-                        chain, from, token.address, BigInteger.ZERO,
-                        Erc20.encodeTransfer(dest, units), dest, token, units
-                    )
-                }
-                planName = null
-                editor.load(built)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
-            }
+    fun review() = runner.launch {
+        val typed = to.trim()
+        if (Ens.looksLikeName(typed)) require(ensName != null) {
+            ensError ?: "Name not resolved yet"
         }
+        val dest = resolved ?: typed
+        require(isValidAddress(dest)) { "Invalid recipient address or checksum" }
+        require(!dest.equals(ZERO, ignoreCase = true)) { "Recipient is the zero address" }
+        val units = parseAmount(amount, decimals)
+        val built = if (token == null) {
+            SendTx.plan(chain, from, dest, units)
+        } else {
+            require(!dest.equals(token.address, ignoreCase = true)) {
+                "Recipient is the token contract. Tokens would be lost."
+            }
+            val bal = Erc20.balanceOf(chain.rpcUrl, token.address, from)
+            require(bal >= units) {
+                "Insufficient ${token.symbol}. You have ${
+                    formatUnits(bal, token.decimals, token.decimals)
+                }"
+            }
+            SendTx.plan(
+                chain, from, token.address, BigInteger.ZERO,
+                Erc20.encodeTransfer(dest, units), dest, token, units
+            )
+        }
+        planName = null
+        editor.load(built)
     }
 
     suspend fun buildBatchItem(): BatchItem {
@@ -324,66 +304,30 @@ fun SendScreen(
         }
     }
 
-    fun addToBatch(thenOpen: Boolean = false) {
-        busy = true
-        error = null
-        scope.launch {
-            try {
-                batchItems.add(buildBatchItem())
-                to = ""
-                amount = ""
-                tokenAddr = initialToken?.address
-                if (thenOpen) batchOpen = true
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
-            }
-        }
+    fun addToBatch(thenOpen: Boolean = false) = runner.launch {
+        batchItems.add(buildBatchItem())
+        to = ""
+        amount = ""
+        tokenAddr = initialToken?.address
+        if (thenOpen) batchOpen = true
     }
 
-    fun reviewSingle(b: BatchItem) {
-        busy = true
-        error = null
-        scope.launch {
-            try {
-                val t = b.token
-                val built = if (t == null) {
-                    SendTx.plan(chain, from, b.to, b.value)
-                } else {
-                    SendTx.plan(
-                        chain, from, t.address, BigInteger.ZERO,
-                        Numeric.toHexString(b.data), b.recipient, t, b.spend
-                    )
-                }
-                planName = b.name
-                editor.load(built)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
-            }
+    fun reviewSingle(b: BatchItem) = runner.launch {
+        val t = b.token
+        val built = if (t == null) {
+            SendTx.plan(chain, from, b.to, b.value)
+        } else {
+            SendTx.plan(
+                chain, from, t.address, BigInteger.ZERO,
+                Numeric.toHexString(b.data), b.recipient, t, b.spend
+            )
         }
+        planName = b.name
+        editor.load(built)
     }
 
-    fun sign(pl: TxPlan) {
-        busy = true
-        error = null
-        scope.launch {
-            try {
-                hash = vault.withCredentials(activity) { creds -> SendTx.signAndSend(pl, creds) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
-            }
-        }
+    fun sign(pl: TxPlan) = runner.launch {
+        hash = vault.withCredentials(activity) { creds -> SendTx.signAndSend(pl, creds) }
     }
 
     Dialog(

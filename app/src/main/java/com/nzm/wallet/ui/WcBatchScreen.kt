@@ -10,7 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -33,7 +32,6 @@ import com.nzm.wallet.wc.WcService
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import org.web3j.crypto.Credentials
@@ -166,7 +164,6 @@ fun WcBatchScreen(
     val (warn, blocked) = verdict(item.verify)
     val verified =
         item.verify.isScam != true && item.verify.validation == Wallet.Model.Validation.VALID
-    val scope = rememberCoroutineScope()
 
     val signer by produceState(WcService.sessionAddress(req.topic), item) {
         var tries = 0
@@ -204,8 +201,9 @@ fun WcBatchScreen(
     var status by remember { mutableStateOf<BatchStatus?>(null) }
     var statusError by remember { mutableStateOf<String?>(null) }
     val editor = rememberPlanEditor()
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val runner = rememberBusyRunner()
+    val busy = runner.busy
+    val error = runner.error
 
     if (parsed is Req.Ok && signerNow != null) {
         LaunchedEffect(item) {
@@ -267,39 +265,24 @@ fun WcBatchScreen(
         if (!canSend) return
         val pl = editor.plan ?: return
         val row = signerRow ?: return
-        scope.launch {
-            busy = true
-            error = null
-            try {
-                vm.annotateNext(site?.name ?: site?.url, "Batch of ${parsed.items.size} calls")
-                val hash = vault.withCredentials(activity, row.id) { c: Credentials ->
-                    check(
-                        c.address.equals(
-                            signerNow,
-                            ignoreCase = true
-                        )
-                    ) { "Wallet key does not match the site's account" }
-                    SendTx.signAndSend(pl, c)
+        runner.launch {
+            vm.annotateNext(site?.name ?: site?.url, "Batch of ${parsed.items.size} calls")
+            val hash = vault.withCredentials(activity, row.id) { c: Credentials ->
+                check(c.address.equals(signerNow, ignoreCase = true)) {
+                    "Wallet key does not match the site's account"
                 }
-                val bundleId = parsed.id.ifBlank {
-                    "0x" + ByteArray(32).also { SecureRandom().nextBytes(it) }
-                        .joinToString("") { "%02x".format(it) }
-                }
-                WcService.saveCall(bundleId, parsed.chain.chainId, hash)
-                // EIP-5792 version 1 answers with the id alone, version 2 with an object
-                val result = if (parsed.version.startsWith("1")) bundleId else JSONObject().put(
-                    "id",
-                    bundleId
-                ).toString()
-                WcService.respondResult(item, result)
-                if (isActive) vm.refresh()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
+                SendTx.signAndSend(pl, c)
             }
+            val bundleId = parsed.id.ifBlank {
+                "0x" + ByteArray(32).also { SecureRandom().nextBytes(it) }
+                    .joinToString("") { "%02x".format(it) }
+            }
+            WcService.saveCall(bundleId, parsed.chain.chainId, hash)
+            // EIP-5792 version 1 answers with the id alone, version 2 with an object
+            val result = if (parsed.version.startsWith("1")) bundleId
+            else JSONObject().put("id", bundleId).toString()
+            WcService.respondResult(item, result)
+            if (isActive) vm.refresh()
         }
     }
 

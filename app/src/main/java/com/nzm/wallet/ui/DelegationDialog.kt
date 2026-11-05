@@ -14,7 +14,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,7 +29,6 @@ import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.ZERO
 import com.nzm.wallet.utils.Helpers.shortAddress
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 import org.web3j.crypto.Keys
 import java.math.BigInteger
 
@@ -43,7 +41,6 @@ fun DelegationDialog(
     from: String,
     onClose: (changed: Boolean) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     var current by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -52,8 +49,9 @@ fun DelegationDialog(
     var understood by remember { mutableStateOf(false) }
     var hash by remember { mutableStateOf<String?>(null) }
     val result = rememberTxResult(chain, hash)
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val runner = rememberBusyRunner()
+    val busy = runner.busy
+    val error = runner.error
     var changed by remember { mutableStateOf(false) }
 
     LaunchedEffect(chain.chainId, from) {
@@ -77,23 +75,7 @@ fun DelegationDialog(
     val tgt = target
     val revoke = tgt == ZERO
 
-    fun launchSafe(block: suspend () -> Unit) {
-        busy = true
-        error = null
-        scope.launch {
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
-            }
-        }
-    }
-
-    fun prepare(delegate: String) = launchSafe {
+    fun prepare(delegate: String) = runner.launch {
         if (delegate != ZERO) {
             require(
                 isContract(
@@ -131,7 +113,7 @@ fun DelegationDialog(
                     PrimaryButton(
                         if (busy) "Working…" else "Sign & send",
                         onClick = {
-                            launchSafe {
+                            runner.launch {
                                 hash = vault.withCredentials(activity) { creds ->
                                     Delegation.signAndSend(
                                         p,

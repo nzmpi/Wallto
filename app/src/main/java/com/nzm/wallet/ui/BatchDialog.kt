@@ -67,7 +67,6 @@ fun BatchDialog(
     sharedItems: SnapshotStateList<BatchItem>? = null,
     onClose: (sent: Boolean) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     val items = sharedItems ?: remember { mutableStateListOf() }
     var adding by remember { mutableStateOf(false) }
     var allOrNothing by remember { mutableStateOf(true) }
@@ -77,8 +76,9 @@ fun BatchDialog(
     var hash by remember { mutableStateOf<String?>(null) }
     val result = rememberTxResult(chain, hash)
 
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val runner = rememberBusyRunner()
+    val busy = runner.busy
+    val error = runner.error
 
     LaunchedEffect(chain.chainId, from) {
         status = null
@@ -96,23 +96,7 @@ fun BatchDialog(
     val h = hash
     val canBatch = status?.supportsBatch == true
 
-    fun launchSafe(block: suspend () -> Unit) {
-        busy = true
-        error = null
-        scope.launch {
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
-            }
-        }
-    }
-
-    fun buildPlan() = launchSafe {
+    fun buildPlan() = runner.launch {
         val data = Batch.encode(items.toList(), allOrNothing)
         val built = SendTx.plan(chain, from, from, BigInteger.ZERO, data)
         editor.load(built)
@@ -137,7 +121,7 @@ fun BatchDialog(
                     PrimaryButton(
                         if (busy) "Working…" else "Sign & send",
                         onClick = {
-                            launchSafe {
+                            runner.launch {
                                 hash = vault.withCredentials(activity) { creds ->
                                     SendTx.signAndSend(
                                         p,

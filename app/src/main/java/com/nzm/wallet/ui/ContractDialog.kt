@@ -99,7 +99,6 @@ fun ContractDialog(
     saved: SavedContract? = null,
     onClose: (sent: Boolean) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     var write by remember { mutableStateOf(false) }
     var contract by remember { mutableStateOf(saved?.address ?: "") }
     var abi by remember { mutableStateOf(saved?.abi) }
@@ -116,27 +115,12 @@ fun ContractDialog(
     var readResult by remember { mutableStateOf<List<String>?>(null) }
     var hash by remember { mutableStateOf<String?>(null) }
     val status = rememberTxResult(chain, hash)
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val runner = rememberBusyRunner()
+    val busy = runner.busy
+    val error = runner.error
     var saveDialog by remember { mutableStateOf(false) }
     var listOpen by remember { mutableStateOf(true) }
     val focus = LocalFocusManager.current
-
-    fun launchSafe(block: suspend () -> Unit) {
-        busy = true
-        error = null
-        scope.launch {
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
-            }
-        }
-    }
 
     val fns = remember(abi) { abi?.let { abiFunctions(it) } }
     val useAbi = !manual && fns != null
@@ -167,7 +151,7 @@ fun ContractDialog(
         }
     }
 
-    fun act() = launchSafe {
+    fun act() = runner.launch {
         readResult = null
         val pr = prepare(chain, contract, effSig, effArgs)
         if (!write) {
@@ -197,7 +181,7 @@ fun ContractDialog(
                     PrimaryButton(
                         if (busy) "Working…" else "Sign & send",
                         onClick = {
-                            launchSafe {
+                            runner.launch {
                                 hash = vault.withCredentials(activity) { creds ->
                                     SendTx.signAndSend(
                                         p,
@@ -331,7 +315,7 @@ fun ContractDialog(
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlineButton("Load ABI", {
-                            launchSafe {
+                            runner.launch {
                                 val addr = Keys.toChecksumAddress(contract.trim())
                                 val r = Sourcify.fetch(chain.chainId, addr)
                                 abi = r.abi
