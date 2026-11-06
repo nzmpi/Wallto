@@ -63,13 +63,25 @@ private fun ProposalDialog(vm: WalletViewModel, address: String, item: WcService
         PageHeader("Connect") { WcService.reject(item) }
 
         // site: green when the domain is verified, red otherwise. Tap for the check.
-        Column(Modifier.clickable { siteInfo = true }.padding(top = 4.dp)) {
+        Column(
+            Modifier
+                .clickable { siteInfo = true }
+                .padding(top = 4.dp)) {
             Text(
                 p.name.ifBlank { "Unknown site" },
-                fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
-                color = if (verified) TxOk else Dim.Danger, maxLines = 1, overflow = TextOverflow.Ellipsis
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (verified) TxOk else Dim.Danger,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            Text(p.url, fontSize = 14.sp, color = Dim.Mid, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                p.url,
+                fontSize = 14.sp,
+                color = Dim.Mid,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
         if (blocked) Text(warn, fontSize = 14.sp, color = Dim.Danger)
 
@@ -83,12 +95,18 @@ private fun ProposalDialog(vm: WalletViewModel, address: String, item: WcService
             Text(
                 "Shares this wallet's address on all chains saved in it. " +
                         "The site can request signatures and transactions. Each one needs your approval.",
-                fontSize = 14.sp, color = Dim.Mid, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+                fontSize = 14.sp,
+                color = Dim.Mid,
+                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
             )
         }
 
         if (vm.wallets.size > 1)
-            Text("Wrong wallet? Reject, switch wallet, then connect again.", fontSize = 13.sp, color = Dim.Mid)
+            Text(
+                "Wrong wallet? Reject, switch wallet, then connect again.",
+                fontSize = 13.sp,
+                color = Dim.Mid
+            )
         error?.let { Text(it, fontSize = 14.sp, color = Dim.Danger) }
     }
 

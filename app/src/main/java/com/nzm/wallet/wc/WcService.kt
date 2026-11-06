@@ -1,10 +1,9 @@
-
 package com.nzm.wallet.wc
 
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
-import com.nzm.wallet.chain.Chain
+import com.nzm.wallet.dbs.Chain
 import com.reown.android.Core
 import com.reown.android.CoreClient
 import com.reown.android.relay.ConnectionType
@@ -16,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import androidx.core.content.edit
 import com.nzm.wallet.ui.Batch
+import com.nzm.wallet.utils.Helpers.getPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,11 +33,26 @@ object WcService {
     const val SEND_CALLS = "wallet_sendCalls"
     const val GET_CALLS_STATUS = "wallet_getCallsStatus"
     const val GET_CAPABILITIES = "wallet_getCapabilities"
-    private val METHODS = listOf(PERSONAL_SIGN, TYPED_V4, SEND_TX, SWITCH_CHAIN, SEND_CALLS, GET_CALLS_STATUS, GET_CAPABILITIES)
+    private val METHODS = listOf(
+        PERSONAL_SIGN,
+        TYPED_V4,
+        SEND_TX,
+        SWITCH_CHAIN,
+        SEND_CALLS,
+        GET_CALLS_STATUS,
+        GET_CAPABILITIES
+    )
     private val EVENTS = listOf("chainChanged", "accountsChanged")
 
-    data class Proposal(val proposal: Wallet.Model.SessionProposal, val verify: Wallet.Model.VerifyContext)
-    data class Request(val request: Wallet.Model.SessionRequest, val verify: Wallet.Model.VerifyContext)
+    data class Proposal(
+        val proposal: Wallet.Model.SessionProposal,
+        val verify: Wallet.Model.VerifyContext
+    )
+
+    data class Request(
+        val request: Wallet.Model.SessionRequest,
+        val verify: Wallet.Model.VerifyContext
+    )
 
     private val _proposals = MutableStateFlow<List<Proposal>>(emptyList())
     val proposals: StateFlow<List<Proposal>> = _proposals.asStateFlow()
@@ -53,12 +68,16 @@ object WcService {
 
     interface Provider {
         fun chains(): List<Chain>
+
         /** Address of the ACTIVE wallet, null while locked. */
         fun address(): String?
         fun switchTo(chain: Chain)
     }
-    @Volatile var provider: Provider? = null
-    @Volatile private var accountPrefs: SharedPreferences? = null
+
+    @Volatile
+    var provider: Provider? = null
+    @Volatile
+    private var accountPrefs: SharedPreferences? = null
     private fun cacheAccount(topic: String, address: String) {
         accountPrefs?.edit { putString(topic, address) }
     }
@@ -77,9 +96,10 @@ object WcService {
 
     fun onForeground() = relayConnect()
 
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences("wc_prefs", Context.MODE_PRIVATE)
+    private fun prefs(ctx: Context) = ctx.getPrefs("wc_prefs")
 
-    fun projectId(ctx: Context): String? = prefs(ctx).getString("project_id", null)?.takeIf { it.isNotBlank() }
+    fun projectId(ctx: Context): String? =
+        prefs(ctx).getString("project_id", null)?.takeIf { it.isNotBlank() }
 
     /** SDK reads the ID once at startup, so a change applies after the app restarts. */
     fun setProjectId(ctx: Context, id: String?) {
@@ -103,7 +123,8 @@ object WcService {
     }
 
     fun start(app: Application) {
-        if (accountPrefs == null) accountPrefs = app.getSharedPreferences("wc_accounts", Context.MODE_PRIVATE)
+        if (accountPrefs == null) accountPrefs =
+            app.getSharedPreferences("wc_accounts", Context.MODE_PRIVATE)
         if (started) return
         val projectId = projectId(app) ?: return
         started = true
@@ -111,7 +132,7 @@ object WcService {
             application = app,
             projectId = projectId,
             metaData = Core.Model.AppMetaData(
-                name = "nzm wallet",
+                name = "Wallto",
                 description = "Personal wallet",
                 url = "https://example.com",
                 icons = emptyList(),
@@ -136,13 +157,18 @@ object WcService {
         )
     }
 
-    fun clearStatus() { _status.value = null }
+    fun clearStatus() {
+        _status.value = null
+    }
 
     fun pair(uri: String) {
         val u = uri.trim()
-        if (!u.startsWith("wc:")) { _status.value = "Not a WalletConnect link"; return }
+        if (!u.startsWith("wc:")) {
+            _status.value = "Not a WalletConnect link"; return
+        }
         if (!_ready.value) {
-            _status.value = "WalletConnect is not ready. Add the Reown project ID in Settings → Connected sites, then restart the app."
+            _status.value =
+                "WalletConnect is not ready. Add the Reown project ID in Settings → Connected sites, then restart the app."
             return
         }
         _status.value = null
@@ -166,7 +192,9 @@ object WcService {
         WalletKit.disconnectSession(
             Wallet.Params.SessionDisconnect(sessionTopic = topic),
             onSuccess = { refreshSessions() },
-            onError = { _status.value = it.throwable.message ?: "Disconnect failed"; refreshSessions() }
+            onError = {
+                _status.value = it.throwable.message ?: "Disconnect failed"; refreshSessions()
+            }
         )
         accountPrefs?.edit { remove(topic) }
     }
@@ -217,7 +245,10 @@ object WcService {
         _requests.update { l -> l.filter { it !== item } }
         send(
             item.request.topic,
-            Wallet.Model.JsonRpcResponse.JsonRpcResult(id = item.request.request.id, result = result)
+            Wallet.Model.JsonRpcResponse.JsonRpcResult(
+                id = item.request.request.id,
+                result = result
+            )
         )
     }
 
@@ -227,7 +258,10 @@ object WcService {
     }
 
     private fun errorTo(topic: String, id: Long, code: Int, message: String) =
-        send(topic, Wallet.Model.JsonRpcResponse.JsonRpcError(id = id, code = code, message = message))
+        send(
+            topic,
+            Wallet.Model.JsonRpcResponse.JsonRpcError(id = id, code = code, message = message)
+        )
 
     private fun send(topic: String, response: Wallet.Model.JsonRpcResponse) {
         WalletKit.respondSessionRequest(
@@ -242,10 +276,14 @@ object WcService {
         val topic = r.topic
         val p = provider
         val active = p?.address()
-        if (p == null || active == null) { errorTo(topic, id, 4900, "Wallet unavailable"); return }
+        if (p == null || active == null) {
+            errorTo(topic, id, 4900, "Wallet unavailable"); return
+        }
         // the wallet this site connected with, not necessarily the active one
         val address = sessionAddress(topic)
-        if (address == null) { errorTo(topic, id, 4900, "No account for this session"); return }
+        if (address == null) {
+            errorTo(topic, id, 4900, "No account for this session"); return
+        }
         val cid = try {
             val s = JSONArray(r.request.params).getJSONObject(0).getString("chainId")
             if (s.startsWith("0x")) s.drop(2).toLong(16) else s.toLong()
@@ -254,7 +292,9 @@ object WcService {
         }
         val chains = p.chains()
         val chain = chains.firstOrNull { it.chainId == cid }
-        if (chain == null) { errorTo(topic, id, 4902, "Chain not added to this wallet"); return }
+        if (chain == null) {
+            errorTo(topic, id, 4902, "Chain not added to this wallet"); return
+        }
 
         val finish = {
             // the app's chain only follows sites of the wallet you are looking at
@@ -277,7 +317,9 @@ object WcService {
         } catch (_: Exception) {
             false
         }
-        if (inSession) { finish(); return }
+        if (inSession) {
+            finish(); return
+        }
 
         // site did not ask for this chain at connect time: extend the session to all saved chains
         val ids = chains.map { "eip155:${it.chainId}" }
@@ -290,7 +332,14 @@ object WcService {
         WalletKit.updateSession(
             Wallet.Params.SessionUpdate(sessionTopic = topic, namespaces = ns),
             onSuccess = { refreshSessions(); finish() },
-            onError = { errorTo(topic, id, 4901, it.throwable.message ?: "Could not add chain to session") }
+            onError = {
+                errorTo(
+                    topic,
+                    id,
+                    4901,
+                    it.throwable.message ?: "Could not add chain to session"
+                )
+            }
         )
     }
 
@@ -317,10 +366,17 @@ object WcService {
                     val out = JSONObject()
                     for (c in chains) {
                         if (asked != null && c.chainId !in asked) continue
-                        val ok = try { Batch.status(c, acct).supportsBatch } catch (_: Exception) { false }
+                        val ok = try {
+                            Batch.status(c, acct).supportsBatch
+                        } catch (_: Exception) {
+                            false
+                        }
                         out.put(
                             "0x" + c.chainId.toString(16),
-                            JSONObject().put("atomic", JSONObject().put("status", if (ok) "supported" else "unsupported"))
+                            JSONObject().put(
+                                "atomic",
+                                JSONObject().put("status", if (ok) "supported" else "unsupported")
+                            )
                         )
                     }
                     result(r, out.toString())
@@ -328,6 +384,7 @@ object WcService {
                     errorTo(r.topic, r.request.id, -32602, "Bad params")
                 }
             }
+
             GET_CALLS_STATUS -> bg.launch {
                 try {
                     val raw = JSONArray(r.request.params).get(0)
@@ -367,6 +424,7 @@ object WcService {
                     errorTo(r.topic, r.request.id, -32603, e.message ?: "Lookup failed")
                 }
             }
+
             else -> return false
         }
         return true
@@ -385,7 +443,9 @@ object WcService {
             verifyContext: Wallet.Model.VerifyContext
         ) {
             refreshSessions()
-            if (sessionRequest.request.method == SWITCH_CHAIN) { handleSwitch(sessionRequest); return }
+            if (sessionRequest.request.method == SWITCH_CHAIN) {
+                handleSwitch(sessionRequest); return
+            }
             if (answerReadOnly(sessionRequest)) return
             if (sessionRequest.request.method !in METHODS) {
                 // eth_sign, eth_signTransaction and the rest are refused without a prompt
@@ -399,10 +459,21 @@ object WcService {
             _relayUp.value = state.isAvailable
         }
 
-        override fun onSessionExtend(session: Wallet.Model.Session) { refreshSessions() }
-        override fun onSessionDelete(sessionDelete: Wallet.Model.SessionDelete) { refreshSessions() }
-        override fun onSessionSettleResponse(settleSessionResponse: Wallet.Model.SettledSessionResponse) { refreshSessions() }
+        override fun onSessionExtend(session: Wallet.Model.Session) {
+            refreshSessions()
+        }
+
+        override fun onSessionDelete(sessionDelete: Wallet.Model.SessionDelete) {
+            refreshSessions()
+        }
+
+        override fun onSessionSettleResponse(settleSessionResponse: Wallet.Model.SettledSessionResponse) {
+            refreshSessions()
+        }
+
         override fun onSessionUpdateResponse(sessionUpdateResponse: Wallet.Model.SessionUpdateResponse) {}
-        override fun onError(error: Wallet.Model.Error) { _status.value = error.throwable.message }
+        override fun onError(error: Wallet.Model.Error) {
+            _status.value = error.throwable.message
+        }
     }
 }

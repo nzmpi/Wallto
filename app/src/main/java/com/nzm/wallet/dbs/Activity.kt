@@ -1,10 +1,7 @@
-package com.nzm.wallet.chain
+package com.nzm.wallet.dbs
 
-import androidx.room.Dao
-import androidx.room.Entity
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
+import androidx.room.*
+import com.nzm.wallet.chain.TxPlan
 import kotlinx.coroutines.flow.Flow
 
 /** status: 0 pending, 1 confirmed, 2 failed (reverted) */

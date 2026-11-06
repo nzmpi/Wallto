@@ -2,21 +2,36 @@ package com.nzm.wallet.ui
 
 import android.annotation.SuppressLint
 import android.app.Application
-import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.nzm.wallet.chain.Chain
-import com.nzm.wallet.chain.ChainRepository
+import com.nzm.wallet.chain.Ens
 import com.nzm.wallet.chain.Erc20
 import com.nzm.wallet.chain.Rpc
-import com.nzm.wallet.chain.Token
-import com.nzm.wallet.chain.TokenRepository
+import com.nzm.wallet.chain.SendTx
+import com.nzm.wallet.dbs.AppDatabase
+import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.dbs.ChainRepository
+import com.nzm.wallet.dbs.Contact
+import com.nzm.wallet.dbs.Token
+import com.nzm.wallet.dbs.TokenRepository
+import com.nzm.wallet.dbs.TxRecord
+import com.nzm.wallet.dbs.WalletRow
+import com.nzm.wallet.dbs.syncWithVault
+import com.nzm.wallet.dbs.txRecordOf
+import com.nzm.wallet.prices.PriceRepository
+import com.nzm.wallet.prices.PriceSnapshot
+import com.nzm.wallet.storage.Vault
+import com.nzm.wallet.utils.Helpers.formatUnits
+import com.nzm.wallet.utils.Helpers.getPrefs
+import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -26,22 +41,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
-import java.math.BigInteger
-import androidx.core.content.edit
-import com.nzm.wallet.chain.AppDatabase
-import com.nzm.wallet.chain.Contact
-import com.nzm.wallet.chain.Ens
-import com.nzm.wallet.chain.SendTx
-import com.nzm.wallet.chain.TxRecord
-import com.nzm.wallet.chain.WalletRow
-import com.nzm.wallet.chain.syncWithVault
-import com.nzm.wallet.chain.txRecordOf
-import com.nzm.wallet.prices.PriceRepository
-import com.nzm.wallet.prices.PriceSnapshot
-import com.nzm.wallet.storage.Vault
-import com.nzm.wallet.wc.WcService
-import kotlinx.coroutines.Dispatchers
 import java.math.BigDecimal
+import java.math.BigInteger
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -60,7 +61,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     @SuppressLint("StaticFieldLeak")
     private val ctx = app.applicationContext
-    private val prefs = ctx.getSharedPreferences("wallet_prefs", Context.MODE_PRIVATE)
+    private val prefs = ctx.getPrefs("wallet_prefs")
     val chainRepo = ChainRepository(ctx)
     val tokenRepo = TokenRepository(ctx)
 
@@ -73,13 +74,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     /** Public info of every wallet (name, address). Safe to show while unlocked. */
     var wallets by mutableStateOf<List<WalletRow>>(emptyList())
         private set
+
     /** Id of the active wallet. Kept while locked, so unlock opens the same wallet. */
     var activeWalletId by mutableStateOf<String?>(null)
         private set
     val activeWallet: WalletRow? get() = wallets.firstOrNull { it.id == activeWalletId }
+
     /** UI sets these. WalletGate shows the add flow / delete confirm. */
     var addWalletRequest by mutableStateOf(false)
     var deleteWalletRequest by mutableStateOf<String?>(null)
+
     /** wc: link received from outside the app. Paired once unlocked and WalletConnect is ready. */
     var pendingWcUri by mutableStateOf<String?>(null)
 
@@ -143,14 +147,19 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     var historyRefreshing by mutableStateOf(false)
         private set
 
-    @Volatile private var nextDapp: String? = null
-    @Volatile private var nextNote: String? = null
+    @Volatile
+    private var nextDapp: String? = null
+
+    @Volatile
+    private var nextNote: String? = null
 
     fun refreshEns() {
         val a = address
         val rpc = ensRpc
         ensJob?.cancel()
-        if (a == null || rpc == null) { ensName = null; return }
+        if (a == null || rpc == null) {
+            ensName = null; return
+        }
         ensJob = viewModelScope.launch {
             try {
                 ensName = Ens.reverse(rpc, a)
@@ -233,7 +242,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Drops the list entry. Vault.delete(id) is done by the caller. */
-    suspend fun forgetWallet(id: String) { walletDao.delete(id) }
+    suspend fun forgetWallet(id: String) {
+        walletDao.delete(id)
+    }
 
     /** Wipe all. */
     suspend fun wipeWallets() {
@@ -249,8 +260,13 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         resetBalances()
     }
 
-    fun saveContact(c: Contact) { viewModelScope.launch { contactDao.upsert(c) } }
-    fun deleteContact(address: String) { viewModelScope.launch { contactDao.delete(address) } }
+    fun saveContact(c: Contact) {
+        viewModelScope.launch { contactDao.upsert(c) }
+    }
+
+    fun deleteContact(address: String) {
+        viewModelScope.launch { contactDao.delete(address) }
+    }
 
     fun setLockAfter(ms: Long) {
         lockAfterMs = ms
@@ -324,10 +340,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun amountText(raw: BigInteger?, decimals: Int): String =
-        raw?.let { Rpc.formatUnits(it, decimals, 6) } ?: "—"
+        raw?.let { formatUnits(it, decimals, 6) } ?: "—"
 
     private fun loadSnapshot(chainId: Long) {
-        if (!snapshots.containsKey(chainId)) snapshots = snapshots + (chainId to priceRepo.snapshot(chainId))
+        if (!snapshots.containsKey(chainId)) snapshots =
+            snapshots + (chainId to priceRepo.snapshot(chainId))
     }
 
     /** Auto: once per day per chain. Forced: refresh button. Testnets and no key: no calls. */
@@ -353,7 +370,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Call right before signing a site's transaction so the history shows where it came from. */
-    fun annotateNext(dapp: String?, note: String?) { nextDapp = dapp; nextNote = note }
+    fun annotateNext(dapp: String?, note: String?) {
+        nextDapp = dapp; nextNote = note
+    }
 
     private fun recordTx(r: TxRecord) {
         viewModelScope.launch { activityDao.upsert(r) }
@@ -392,8 +411,13 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun removeTx(chainId: Long, hash: String) { viewModelScope.launch { activityDao.delete(chainId, hash) } }
-    fun clearHistory() { viewModelScope.launch { activityDao.deleteAll() } }
+    fun removeTx(chainId: Long, hash: String) {
+        viewModelScope.launch { activityDao.delete(chainId, hash) }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch { activityDao.deleteAll() }
+    }
 
     fun setPriceKey(key: String?) {
         val k = key?.trim()?.takeIf { it.isNotEmpty() }
@@ -414,7 +438,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val chain = selected ?: return null
         if (raw == null) return null
         val snap = snapshots[chain.chainId] ?: return null
-        val price = (if (token == null) snap.native else snap.tokens[token.address.lowercase()]) ?: return null
+        val price = (if (token == null) snap.native else snap.tokens[token.address.lowercase()])
+            ?: return null
         val decimals = token?.decimals ?: chain.decimals
         val value = BigDecimal(raw).movePointLeft(decimals) * BigDecimal.valueOf(price)
         return when {

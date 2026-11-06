@@ -25,9 +25,6 @@ object Delegation {
         Known("Rainbow Calibur", "0x612373D7003d694220f7800EeaF8E3924c0951D3")
     )
 
-    /** Delegating to the zero address removes the delegation. */
-    const val ZERO = "0x0000000000000000000000000000000000000000"
-
     /** Intrinsic gas for one authorization is 25000 on top of 21000. The unused part is not charged. */
     val GAS_LIMIT: BigInteger = BigInteger.valueOf(80_000)
 
@@ -94,8 +91,8 @@ object Delegation {
                 RlpString.create(Numeric.hexStringToByteArray(plan.to)),
                 RlpString.create(BigInteger.ZERO),
                 RlpString.create(ByteArray(0)),
-                RlpList(),                       // access list
-                RlpList(authTuple)               // authorization list
+                RlpList(),             // access list
+                RlpList(authTuple)     // authorization list
             )
             val txHash = Hash.sha3(byteArrayOf(0x04) + RlpEncoder.encode(RlpList(fields)))
             val sig = Sign.signMessage(txHash, creds.ecKeyPair, false)

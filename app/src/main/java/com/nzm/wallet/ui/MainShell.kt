@@ -35,9 +35,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
-import com.nzm.wallet.chain.Token
+import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.SHAPE
+import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.wc.WcService
 
 enum class HomeTab(val label: String, val icon: ImageVector) {
@@ -84,7 +86,11 @@ fun MainShell(
             WcService.pair(u)
         } else if (WcService.projectId(activity) == null) {
             vm.pendingWcUri = null
-            Toast.makeText(activity, "Add the Reown project ID in Settings → Connected sites first", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                activity,
+                "Add the Reown project ID in Settings → Connected sites first",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -109,9 +115,14 @@ fun MainShell(
                         Toast.makeText(activity, "Connecting…", Toast.LENGTH_SHORT).show()
                         WcService.pair(r.uri)
                     }
+
                     is ScanResult.Address -> sendReq = SendRequest(null, r.value)
                     ScanResult.Unknown ->
-                        Toast.makeText(activity, "Not a WalletConnect or address QR code", Toast.LENGTH_LONG).show()
+                        Toast.makeText(
+                            activity,
+                            "Not a WalletConnect or address QR code",
+                            Toast.LENGTH_LONG
+                        ).show()
                 }
             },
             onError = { Toast.makeText(activity, it, Toast.LENGTH_LONG).show() }
@@ -124,7 +135,9 @@ fun MainShell(
             contentColor = Dim.Ink,
             bottomBar = {
                 NavBar(tab) { t ->
-                    if (t == HomeTab.Connect) scan() else { tab = t; chainMenuOpen = false; walletMenuOpen = false }
+                    if (t == HomeTab.Connect) scan() else {
+                        tab = t; chainMenuOpen = false; walletMenuOpen = false
+                    }
                 }
             }
         ) { pad ->
@@ -137,9 +150,16 @@ fun MainShell(
                             onWalletMenu = { chainMenuOpen = false; walletMenuOpen = true },
                             onChainMenu = { walletMenuOpen = false; chainMenuOpen = true }
                         )
+
                         HomeTab.Activity -> ActivityScreen(activity, vm, address)
                         HomeTab.Connect -> Unit // an action, not a tab
-                        HomeTab.Contracts -> ContractsScreen(activity, vault, vm, address) { chainMenuOpen = true }
+                        HomeTab.Contracts -> ContractsScreen(
+                            activity,
+                            vault,
+                            vm,
+                            address
+                        ) { chainMenuOpen = true }
+
                         HomeTab.Settings -> SettingsScreen(
                             activity, vault, vm, address, settingsPage,
                             onPage = { settingsPage = it },
@@ -155,7 +175,9 @@ fun MainShell(
             open = chainMenuOpen,
             onDismiss = { chainMenuOpen = false },
             onSelect = { vm.selectChain(it); chainMenuOpen = false },
-            onManage = { tab = HomeTab.Settings; settingsPage = SettingsPage.Chains; chainMenuOpen = false }
+            onManage = {
+                tab = HomeTab.Settings; settingsPage = SettingsPage.Chains; chainMenuOpen = false
+            }
         )
         WalletMenuOverlay(
             vm = vm,
@@ -180,12 +202,23 @@ fun MainShell(
 private fun NavBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
     Column(Modifier.background(Dim.Nav)) {
         Hairline()
-        Row(Modifier.navigationBarsPadding().height(68.dp).selectableGroup()) {
+        Row(
+            Modifier
+                .navigationBarsPadding()
+                .height(68.dp)
+                .selectableGroup()
+        ) {
             HomeTab.entries.forEach { t ->
                 val active = t == selected
-                val color by animateColorAsState(if (active) Dim.Accent else Dim.Mid, tween(150), label = "tabColor")
+                val color by animateColorAsState(
+                    if (active) Dim.Accent else Dim.Mid,
+                    tween(150),
+                    label = "tabColor"
+                )
                 Column(
-                    Modifier.weight(1f).fillMaxHeight()
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
                         .selectable(selected = active, role = Role.Tab, onClick = { onSelect(t) }),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
@@ -212,35 +245,63 @@ private fun BoxScope.WalletMenuOverlay(
 ) {
     AnimatedVisibility(visible = open, enter = fadeIn(tween(140)), exit = fadeOut(tween(100))) {
         Box(
-            Modifier.fillMaxSize().background(Dim.Scrim).clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            )
+            Modifier
+                .fillMaxSize()
+                .background(Dim.Scrim)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                )
         )
     }
     AnimatedVisibility(
         visible = open,
-        modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 62.dp, start = 20.dp),
-        enter = fadeIn(tween(140)) + scaleIn(tween(160), initialScale = 0.94f, transformOrigin = TransformOrigin(0f, 0f)),
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .statusBarsPadding()
+            .padding(top = 62.dp, start = 20.dp),
+        enter = fadeIn(tween(140)) + scaleIn(
+            tween(160),
+            initialScale = 0.94f,
+            transformOrigin = TransformOrigin(0f, 0f)
+        ),
         exit = fadeOut(tween(100))
     ) {
-        val shape = RoundedCornerShape(20.dp)
         Column(
-            Modifier.width(280.dp).clip(shape).background(Dim.Raised).border(1.dp, Dim.MenuLine, shape).padding(6.dp)
+            Modifier
+                .width(280.dp)
+                .clip(SHAPE)
+                .background(Dim.Raised)
+                .border(1.dp, Dim.MenuLine, SHAPE)
+                .padding(6.dp)
         ) {
-            Column(Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())) {
+            Column(
+                Modifier
+                    .heightIn(max = 340.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 vm.wallets.filter { it.address.isNotBlank() }.forEach { w ->
                     WalletMenuItem(w.name, w.address, w.id == vm.activeWalletId) { onSelect(w.id) }
                 }
             }
             MenuLine()
             Row(
-                Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp))
-                    .clickable(onClick = onAdd).padding(horizontal = 12.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onAdd)
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Add wallet", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Dim.Accent, modifier = Modifier.weight(1f))
+                Text(
+                    "Add wallet",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Dim.Accent,
+                    modifier = Modifier.weight(1f)
+                )
                 Icon(Ic.Plus, null, Modifier.size(16.dp), tint = Dim.Accent)
             }
         }
@@ -250,9 +311,13 @@ private fun BoxScope.WalletMenuOverlay(
 @Composable
 private fun WalletMenuItem(name: String, address: String, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(14.dp))
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(if (selected) Dim.RaisedSelected else Color.Transparent)
-            .clickable(onClick = onClick).padding(horizontal = 12.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {

@@ -1,25 +1,30 @@
-package com.nzm.wallet.prices
+package com.nzm.wallet.storage
 
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties.*
 import android.util.Base64
+import androidx.core.content.edit
+import com.nzm.wallet.utils.Constants.PROVIDER
+import com.nzm.wallet.utils.Constants.TRANSFORM
+import com.nzm.wallet.utils.Helpers.generateSecretKey
+import com.nzm.wallet.utils.Helpers.getPrefs
 import java.security.KeyStore
 import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import androidx.core.content.edit
 
 class PriceKeyStore(context: Context) {
-    private val prefs = context.getSharedPreferences("price_prefs", Context.MODE_PRIVATE)
+    private val prefs = context.getPrefs("price_prefs")
 
     fun get(): String? {
         val ct = prefs.getString("key_ct", null) ?: return null
         val iv = prefs.getString("key_iv", null) ?: return null
         return try {
             val cipher = Cipher.getInstance(TRANSFORM)
-            cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                secretKey(),
+                GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP))
+            )
             String(cipher.doFinal(Base64.decode(ct, Base64.NO_WRAP)), Charsets.UTF_8)
         } catch (_: Exception) {
             null
@@ -42,17 +47,10 @@ class PriceKeyStore(context: Context) {
     private fun secretKey(): SecretKey {
         val ks = KeyStore.getInstance(PROVIDER).apply { load(null) }
         (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
-        val spec = KeyGenParameterSpec.Builder(ALIAS, PURPOSE_ENCRYPT or PURPOSE_DECRYPT)
-            .setBlockModes(BLOCK_MODE_GCM)
-            .setEncryptionPaddings(ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build()
-        return KeyGenerator.getInstance(KEY_ALGORITHM_AES, PROVIDER).apply { init(spec) }.generateKey()
+        return generateSecretKey(ALIAS)
     }
 
     private companion object {
         const val ALIAS = "price_api_key"
-        const val PROVIDER = "AndroidKeyStore"
-        const val TRANSFORM = "AES/GCM/NoPadding"
     }
 }

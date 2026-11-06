@@ -1,7 +1,9 @@
 package com.nzm.wallet.wc
 
-import com.nzm.wallet.chain.SendTx
-import com.nzm.wallet.chain.Token
+import com.nzm.wallet.abi.SelectorLookup
+import com.nzm.wallet.dbs.Token
+import com.nzm.wallet.utils.Constants.MAX_UINT
+import com.nzm.wallet.utils.Helpers.isValidAddress
 import org.json.JSONArray
 import org.json.JSONObject
 import org.web3j.crypto.Credentials
@@ -30,10 +32,9 @@ class TypedReq(
 class WcTx(val to: String, val value: BigInteger, val data: String)
 
 object WcSigner {
-    private val MAX_UINT = BigInteger.ONE.shiftLeft(256) - BigInteger.ONE
-
     private fun isHex(s: String) =
-        s.startsWith("0x") && s.length % 2 == 0 && s.drop(2).all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+        s.startsWith("0x") && s.length % 2 == 0 && s.drop(2)
+            .all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
 
     fun parsePersonal(params: String, wallet: String): PersonalMsg {
         val arr = JSONArray(params)
@@ -42,7 +43,8 @@ object WcSigner {
         val b = arr.getString(1)
         val (msg, addr) = if (a.equals(wallet, true)) b to a else a to b
         require(addr.equals(wallet, true)) { "Request is for a different address" }
-        val bytes = if (isHex(msg)) Numeric.hexStringToByteArray(msg) else msg.toByteArray(Charsets.UTF_8)
+        val bytes =
+            if (isHex(msg)) Numeric.hexStringToByteArray(msg) else msg.toByteArray(Charsets.UTF_8)
         val text = try {
             val s = Charsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
@@ -55,7 +57,8 @@ object WcSigner {
         return PersonalMsg(bytes, text ?: Numeric.toHexString(bytes), text != null)
     }
 
-    fun signPersonal(c: Credentials, bytes: ByteArray): String = hex(Sign.signPrefixedMessage(bytes, c.ecKeyPair))
+    fun signPersonal(c: Credentials, bytes: ByteArray): String =
+        hex(Sign.signPrefixedMessage(bytes, c.ecKeyPair))
 
     fun parseTyped(params: String, wallet: String): TypedReq {
         val arr = JSONArray(params)
@@ -89,7 +92,7 @@ object WcSigner {
         val o = JSONArray(params).getJSONObject(0)
         require(o.optString("from").equals(wallet, true)) { "Request is for a different address" }
         val to = o.optString("to")
-        require(SendTx.isValidAddress(to)) { "Contract creation or missing recipient is not supported" }
+        require(isValidAddress(to)) { "Contract creation or missing recipient is not supported" }
         val value = o.optString("value").let {
             if (it.isEmpty() || it == "0x") BigInteger.ZERO else Numeric.decodeQuantity(it)
         }
@@ -100,7 +103,11 @@ object WcSigner {
     }
 
     /** Plain-words description of the call data. Only the common dangerous ones are decoded. */
-    fun describe(tx: WcTx, tokens: List<Token>): Pair<String, Boolean> {
+    fun describe(
+        tx: WcTx,
+        tokens: List<Token>,
+        guess: SelectorLookup.Guess? = null
+    ): Pair<String, Boolean> {
         if (tx.data.isEmpty()) return "Plain transfer, no contract call" to false
         val d = tx.data.drop(2).lowercase()
         val sel = d.take(8)
@@ -111,7 +118,8 @@ object WcSigner {
             val v = BigInteger(w, 16)
             if (v == MAX_UINT) return "UNLIMITED"
             val dec = token?.decimals ?: return "$v (raw units)"
-            return v.toBigDecimal().movePointLeft(dec).stripTrailingZeros().toPlainString() + " ${token.symbol}"
+            return v.toBigDecimal().movePointLeft(dec).stripTrailingZeros()
+                .toPlainString() + " ${token.symbol}"
         }
         return try {
             when (sel) {
@@ -127,7 +135,16 @@ object WcSigner {
                 "23b872dd" if d.length >= 8 + 192 ->
                     "transferFrom\nFrom: ${addr(0)}\nTo: ${addr(1)}\nAmount/ID: ${amount(word(2))}" to false
 
-                else -> "Contract call, function $sel (${d.length / 2 - 4} bytes of arguments). Not decoded." to false
+                else -> if (guess != null) {
+                    buildString {
+                        append("Call ${guess.signature.substringBefore('(')}()")
+                        append("\nName from a public database, unverified")
+                        guess.args?.take(8)?.forEach { (t, v) -> append("\n$t: $v") }
+                        guess.risks.forEach { append("\nWARNING: $it") }
+                    } to guess.risks.isNotEmpty()
+                } else {
+                    "Contract call, function $sel (${d.length / 2 - 4} bytes of arguments). Not decoded." to false
+                }
             }
         } catch (_: Exception) {
             "Contract call, function $sel. Not decoded." to false

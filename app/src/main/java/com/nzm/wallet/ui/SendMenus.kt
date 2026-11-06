@@ -25,8 +25,9 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.nzm.wallet.chain.Chain
+import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.SHAPE
 
 @Composable
 private fun MenuScrim(open: Boolean, onDismiss: () -> Unit) {
@@ -110,7 +111,6 @@ fun BoxScope.SendChainMenu(
         ),
         exit = fadeOut(tween(100))
     ) {
-        val shape = RoundedCornerShape(20.dp)
         val current = vm.selected?.chainId
         val mainnets = vm.chains.filter { !it.isTestnet }
         val testnets = vm.chains.filter { it.isTestnet }
@@ -118,9 +118,9 @@ fun BoxScope.SendChainMenu(
             Modifier
                 .width(260.dp)
                 .heightIn(max = 420.dp)
-                .clip(shape)
+                .clip(SHAPE)
                 .background(Dim.Raised)
-                .border(1.dp, Dim.MenuLine, shape)
+                .border(1.dp, Dim.MenuLine, SHAPE)
                 .verticalScroll(rememberScrollState())
                 .padding(6.dp)
         ) {
@@ -188,14 +188,13 @@ fun BoxScope.SendTokenMenu(
         ),
         exit = fadeOut(tween(100))
     ) {
-        val shape = RoundedCornerShape(20.dp)
         Column(
             Modifier
                 .width(260.dp)
                 .heightIn(max = 420.dp)
-                .clip(shape)
+                .clip(SHAPE)
                 .background(Dim.Raised)
-                .border(1.dp, Dim.MenuLine, shape)
+                .border(1.dp, Dim.MenuLine, SHAPE)
                 .verticalScroll(rememberScrollState())
                 .padding(6.dp)
         ) {

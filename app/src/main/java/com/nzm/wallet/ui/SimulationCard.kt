@@ -1,13 +1,24 @@
 package com.nzm.wallet.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -15,9 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.chain.TxPlan
+import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.SHAPE
+import com.nzm.wallet.utils.Helpers.shortAddress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -28,8 +41,17 @@ fun SimulationCard(vm: WalletViewModel, chain: Chain, plan: TxPlan) {
     var key by remember { mutableStateOf(SimKey.get(ctx)) }
     var keyDialog by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var result by remember(plan.from, plan.to, plan.value, plan.data) { mutableStateOf<SimResult?>(null) }
-    var error by remember(plan.from, plan.to, plan.value, plan.data) { mutableStateOf<String?>(null) }
+    var result by remember(plan.from, plan.to, plan.value, plan.data) {
+        mutableStateOf<SimResult?>(
+            null
+        )
+    }
+    var error by remember(
+        plan.from,
+        plan.to,
+        plan.value,
+        plan.data
+    ) { mutableStateOf<String?>(null) }
 
     fun run(k: String) {
         busy = true
@@ -53,7 +75,12 @@ fun SimulationCard(vm: WalletViewModel, chain: Chain, plan: TxPlan) {
         val k = key
         if (k == null) keyDialog = true else run(k)
     }) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 32.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text("Simulation", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
             Text(
                 when {
@@ -66,31 +93,60 @@ fun SimulationCard(vm: WalletViewModel, chain: Chain, plan: TxPlan) {
                 fontSize = 14.sp, color = if (supported) Dim.Accent else Dim.Mid
             )
         }
-        error?.let { Text(it, fontSize = 14.sp, color = Dim.Danger, modifier = Modifier.padding(top = 6.dp)) }
+        error?.let {
+            Text(
+                it,
+                fontSize = 14.sp,
+                color = Dim.Danger,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
         result?.let { r ->
             Spacer(Modifier.height(6.dp))
             if (r.failure != null) {
-                Text(r.failure, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger)
+                Text(
+                    r.failure,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Dim.Danger
+                )
             } else {
                 if (r.lines.isEmpty() && r.nfts.isEmpty()) {
-                    Text("No token or coin changes for your address.", fontSize = 14.sp, color = Dim.Mid)
+                    Text(
+                        "No token or coin changes for your address.",
+                        fontSize = 14.sp,
+                        color = Dim.Mid
+                    )
                 }
                 r.lines.forEach { l ->
                     Column(Modifier.padding(vertical = 4.dp)) {
-                        Text(if (l.incoming) "You receive" else "You send", fontSize = 12.sp, color = Dim.Mid)
+                        Text(
+                            if (l.incoming) "You receive" else "You send",
+                            fontSize = 12.sp,
+                            color = Dim.Mid
+                        )
                         Text(
                             (if (l.incoming) "+ " else "− ") + l.amount.removePrefix("≈ ") + " " + l.symbol,
                             fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                             color = if (l.incoming) TxOk else Dim.Danger
                         )
                         l.unlistedAddress?.let {
-                            Text("Not in your token list: ${shortAddress(it)}", fontSize = 12.sp, color = Dim.Mid)
+                            Text(
+                                "Not in your token list: ${shortAddress(it)}",
+                                fontSize = 12.sp,
+                                color = Dim.Mid
+                            )
                         }
                     }
                 }
                 r.nfts.forEach {
-                    Text(it, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                        color = if (it.startsWith("+")) TxOk else Dim.Danger, modifier = Modifier.padding(vertical = 4.dp))
+                    Text(
+                        it,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (it.startsWith("+")) TxOk else Dim.Danger,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
                 r.approvals.forEach { a ->
                     Text(
@@ -99,7 +155,14 @@ fun SimulationCard(vm: WalletViewModel, chain: Chain, plan: TxPlan) {
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
-                r.gasUsed?.let { Text("Gas used: $it", fontSize = 12.sp, color = Dim.Mid, modifier = Modifier.padding(top = 8.dp)) }
+                r.gasUsed?.let {
+                    Text(
+                        "Gas used: $it",
+                        fontSize = 12.sp,
+                        color = Dim.Mid,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
         }
     }
@@ -120,7 +183,7 @@ fun SimulationCard(vm: WalletViewModel, chain: Chain, plan: TxPlan) {
                         text, { text = it }, singleLine = true,
                         label = { Text(if (key != null) "New key" else "API key") },
                         visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)
+                        modifier = Modifier.fillMaxWidth(), shape = SHAPE
                     )
                 }
             },

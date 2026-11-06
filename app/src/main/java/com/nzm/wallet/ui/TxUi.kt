@@ -1,11 +1,25 @@
 package com.nzm.wallet.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -19,6 +33,8 @@ import com.nzm.wallet.chain.Ens
 import com.nzm.wallet.chain.Fee
 import com.nzm.wallet.chain.TxPlan
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.SHAPE
+import com.nzm.wallet.utils.Helpers.shortAddress
 import kotlinx.coroutines.CancellationException
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -56,7 +72,7 @@ internal fun TxCard(modifier: Modifier = Modifier, content: @Composable ColumnSc
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(SHAPE)
             .then(modifier)
             .background(Dim.Raised)
             .padding(horizontal = 18.dp, vertical = 14.dp),
@@ -134,7 +150,7 @@ internal fun TxFeeDialog(plan: TxPlan, base: TxPlan, onSave: (Fee) -> Unit, onDi
                 OutlinedTextField(
                     max, { max = it }, singleLine = true, keyboardOptions = numeric,
                     label = { Text(if (f is Fee.Eip1559) "Max fee per gas" else "Gas price") },
-                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)
+                    modifier = Modifier.fillMaxWidth(), shape = SHAPE
                 )
                 if (f is Fee.Eip1559) {
                     OutlinedTextField(
@@ -144,7 +160,7 @@ internal fun TxFeeDialog(plan: TxPlan, base: TxPlan, onSave: (Fee) -> Unit, onDi
                         keyboardOptions = numeric,
                         label = { Text("Priority fee") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp)
+                        shape = SHAPE
                     )
                 }
                 error?.let { Text(it, color = Dim.Danger, fontSize = 14.sp) }
@@ -197,7 +213,7 @@ internal fun TxNonceDialog(
                 OutlinedTextField(
                     text, { text = it.filter(Char::isDigit) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)
+                    modifier = Modifier.fillMaxWidth(), shape = SHAPE
                 )
                 error?.let { Text(it, color = Dim.Danger, fontSize = 14.sp) }
             }
@@ -213,7 +229,12 @@ internal fun TxNonceDialog(
 }
 
 @Composable
-internal fun TxGasDialog(current: BigInteger, base: BigInteger, onSave: (BigInteger) -> Unit, onDismiss: () -> Unit) {
+internal fun TxGasDialog(
+    current: BigInteger,
+    base: BigInteger,
+    onSave: (BigInteger) -> Unit,
+    onDismiss: () -> Unit
+) {
     var text by remember { mutableStateOf(current.toString()) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
@@ -227,13 +248,17 @@ internal fun TxGasDialog(current: BigInteger, base: BigInteger, onSave: (BigInte
                 )
                 OutlinedTextField(
                     text, { text = it.filter(Char::isDigit) }, singleLine = true,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = SHAPE,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
                 val n = text.toBigIntegerOrNull()
                 if (n != null && n < base) {
-                    Text("Below the estimate. It will probably fail.", color = Dim.Danger, fontSize = 14.sp)
+                    Text(
+                        "Below the estimate. It will probably fail.",
+                        color = Dim.Danger,
+                        fontSize = 14.sp
+                    )
                 }
                 error?.let { Text(it, color = Dim.Danger, fontSize = 14.sp) }
             }

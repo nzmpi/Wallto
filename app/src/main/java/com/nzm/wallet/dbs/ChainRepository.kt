@@ -1,8 +1,9 @@
-package com.nzm.wallet.chain
+package com.nzm.wallet.dbs
 
 import android.content.Context
 import kotlinx.coroutines.flow.Flow
 import androidx.core.net.toUri
+import com.nzm.wallet.chain.Rpc
 
 class ChainRepository(context: Context) {
     private val db = AppDatabase.get(context)
@@ -13,10 +14,17 @@ class ChainRepository(context: Context) {
         if (dao.count() > 0) return
         dao.insertAll(
             listOf(
-                Chain(1, "Ethereum", "https://ethereum-rpc.publicnode.com", "ETH", explorerUrl = "https://etherscan.io"),
-                Chain(137, "Polygon", "https://polygon-bor-rpc.publicnode.com", "POL", explorerUrl = "https://polygonscan.com"),
-                Chain(11155111, "Sepolia", "https://ethereum-sepolia-rpc.publicnode.com", "ETH",
-                    explorerUrl = "https://sepolia.etherscan.io", isTestnet = true)
+                Chain(
+                    1,
+                    "Ethereum",
+                    "https://ethereum-rpc.publicnode.com",
+                    "ETH",
+                    explorerUrl = "https://etherscan.io"
+                ),
+                Chain(
+                    11155111, "Sepolia", "https://ethereum-sepolia-rpc.publicnode.com", "ETH",
+                    explorerUrl = "https://sepolia.etherscan.io", isTestnet = true
+                )
             )
         )
     }

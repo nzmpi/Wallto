@@ -19,7 +19,6 @@ import java.math.BigInteger
 
 object Ens {
     private const val UNIVERSAL_RESOLVER = "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe"
-    private const val ZERO = "0x0000000000000000000000000000000000000000"
     private val ETH_COIN_TYPE = BigInteger.valueOf(60)
     private val DEFAULT_COIN_TYPE = BigInteger.valueOf(0x80000000L)
     private val LABEL = Regex("^[a-z0-9_-]{1,63}$")
@@ -55,10 +54,7 @@ object Ens {
     }
 
     private suspend fun callUr(rpcUrl: String, f: Function): List<Type<*>> {
-        val out = ContractCall.read(
-            rpcUrl, ZERO, UNIVERSAL_RESOLVER,
-            Numeric.hexStringToByteArray(FunctionEncoder.encode(f))
-        )
+        val out = Rpc.ethCall(rpcUrl, to = UNIVERSAL_RESOLVER, fn = f)
         return FunctionReturnDecoder.decode(Numeric.toHexString(out), f.outputParameters)
     }
 

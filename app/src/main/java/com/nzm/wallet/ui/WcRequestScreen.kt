@@ -1,17 +1,27 @@
 package com.nzm.wallet.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -19,31 +29,32 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.abi.SelectorLookup
-import com.nzm.wallet.chain.Chain
-import com.nzm.wallet.chain.Rpc
 import com.nzm.wallet.chain.SendTx
-import com.nzm.wallet.chain.Token
-import com.nzm.wallet.chain.TxPlan
+import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
-import com.nzm.wallet.wc.*
+import com.nzm.wallet.utils.Constants.MAX_UINT
+import com.nzm.wallet.utils.Helpers.fmt
+import com.nzm.wallet.utils.Helpers.shortAddress
+import com.nzm.wallet.utils.Helpers.shortAmount
+import com.nzm.wallet.wc.PersonalMsg
+import com.nzm.wallet.wc.TypedReq
+import com.nzm.wallet.wc.WcService
+import com.nzm.wallet.wc.WcSigner
+import com.nzm.wallet.wc.WcTx
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import org.web3j.crypto.Credentials
 import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
 import java.math.BigInteger
-import kotlin.time.Duration.Companion.milliseconds
-
-private val MAX_UINT = BigInteger.ONE.shiftLeft(256) - BigInteger.ONE
 
 /** Returns (line, blocked). Blocked sites cannot be approved. */
 internal fun verdict(v: Wallet.Model.VerifyContext): Pair<String, Boolean> = when {
     v.isScam == true -> "WARNING: this site is flagged as a scam." to true
     v.validation == Wallet.Model.Validation.INVALID ->
         "WARNING: the site's domain does not match what it claims. Likely phishing." to true
+
     v.validation == Wallet.Model.Validation.VALID -> "Verified domain: ${v.origin}" to false
     else -> "Domain could not be verified. Check the name and address yourself." to false
 }
@@ -78,7 +89,7 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
         return Summary(
             "Sending", shortAmount(tx.value, chain.decimals) + " " + chain.symbol,
             null, true, tx.value, tx.to, "To", danger = false, plain = true, isTransfer = true,
-            exact = Rpc.formatUnits(tx.value, chain.decimals, chain.decimals) + " " + chain.symbol
+            exact = fmt(tx.value, chain, chain.decimals)
         )
     }
     val d = tx.data.drop(2).lowercase()
@@ -92,14 +103,17 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
         val dec = token?.decimals ?: return "$v (raw units)" to v
         return shortAmount(v, dec) + " ${token.symbol}" to v
     }
+
     fun exactOf(v: BigInteger): String =
         if (v == MAX_UINT) "Unlimited"
-        else token?.let { Rpc.formatUnits(v, it.decimals, it.decimals) + " ${it.symbol}" } ?: "$v (raw units)"
+        else token?.let { fmt(v, it, it.decimals) }
+            ?: "$v (raw units)"
     return try {
         when (sel) {
             "a9059cbb" if d.length >= 8 + 128 -> {
                 val (t, raw) = amountText(word(1))
-                Summary("Sending", t, token, false, raw, addr(0), "To",
+                Summary(
+                    "Sending", t, token, false, raw, addr(0), "To",
                     danger = false,
                     plain = false,
                     isTransfer = true,
@@ -109,7 +123,8 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
 
             "095ea7b3" if d.length >= 8 + 128 -> {
                 val (t, raw) = amountText(word(1))
-                Summary("Approving", t, null, false, null, addr(0), "Spender",
+                Summary(
+                    "Approving", t, null, false, null, addr(0), "Spender",
                     danger = true,
                     plain = false,
                     isTransfer = false,
@@ -118,7 +133,8 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
             }
 
             "a22cb465" if d.length >= 8 + 128 ->
-                Summary("Approving all tokens", null, null, false, null, addr(0), "Operator",
+                Summary(
+                    "Approving all tokens", null, null, false, null, addr(0), "Operator",
                     danger = true,
                     plain = false,
                     isTransfer = false
@@ -126,7 +142,8 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
 
             "23b872dd" if d.length >= 8 + 192 -> {
                 val (t, raw) = amountText(word(2))
-                Summary("Transfer from ${addr(0)}", t, token, false, raw, addr(1), "To",
+                Summary(
+                    "Transfer from ${addr(0)}", t, token, false, raw, addr(1), "To",
                     danger = false,
                     plain = false,
                     isTransfer = false,
@@ -148,7 +165,11 @@ private fun other(tx: WcTx, chain: Chain) = Summary(
     danger = false,
     plain = false,
     isTransfer = false,
-    exact = if (tx.value.signum() > 0) Rpc.formatUnits(tx.value, chain.decimals, chain.decimals) + " " + chain.symbol else null
+    exact = if (tx.value.signum() > 0) fmt(
+        tx.value,
+        chain,
+        chain.decimals
+    ) else null
 )
 
 /** Full-screen page for a request from a connected site. Signs with the wallet the site connected with. */
@@ -166,20 +187,18 @@ fun WcRequestScreen(
     val (warn, blocked) = verdict(item.verify)
     val verified = isVerified(item.verify)
     val site = req.peerMetaData
-    val scope = rememberCoroutineScope()
 
-    val signer by produceState(WcService.sessionAddress(req.topic), item) {
-        var tries = 0
-        while (value == null && tries < 10) {
-            delay(300.milliseconds)
-            value = WcService.sessionAddress(req.topic)
-            tries++
-        }
-    }
-    val signerNow = signer
-    val signerRow = vm.wallets.firstOrNull { it.address.equals(signer, ignoreCase = true) }
-        ?: if (signer != null && signer.equals(address, ignoreCase = true)) vm.activeWallet else null
-    val isActive = signer != null && signer.equals(address, ignoreCase = true)
+    val session = rememberSessionSigner(
+        vault = vault,
+        activity = activity,
+        vm = vm,
+        address = address,
+        topic = req.topic,
+        key = item
+    )
+    val signerNow = session.address
+    val signerRow = session.row
+    val isActive = session.isActive
 
     val parsed = remember(item, signerRow?.id, signerNow) {
         if (chain == null) Parsed.Bad("Chain ${req.chainId} is not saved in this wallet. Add it first.")
@@ -189,15 +208,20 @@ fun WcRequestScreen(
             Parsed.Bad("The wallet ${shortAddress(signerNow)} this site connected with is not on this phone. Disconnect the site, then connect again.")
         else try {
             when (req.request.method) {
-                WcService.PERSONAL_SIGN -> Parsed.Msg(WcSigner.parsePersonal(req.request.params,
-                    signerNow
-                ))
+                WcService.PERSONAL_SIGN -> Parsed.Msg(
+                    WcSigner.parsePersonal(
+                        req.request.params,
+                        signerNow
+                    )
+                )
+
                 WcService.TYPED_V4 -> {
                     val t = WcSigner.parseTyped(req.request.params, signerNow)
                     if (t.domainChainId != null && t.domainChainId != chain.chainId)
                         Parsed.Bad("Signed data is for chain ${t.domainChainId}, request is for ${chain.chainId}.")
                     else Parsed.Typed(t)
                 }
+
                 WcService.SEND_TX -> Parsed.Tx(WcSigner.parseTx(req.request.params, signerNow))
                 else -> Parsed.Bad("Unsupported method")
             }
@@ -206,40 +230,29 @@ fun WcRequestScreen(
         }
     }
 
-    var plan by remember { mutableStateOf<TxPlan?>(null) }
-    var basePlan by remember { mutableStateOf<TxPlan?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var advanced by remember { mutableStateOf(false) }
-    var siteInfo by remember { mutableStateOf(false) }
-    var feeEdit by remember { mutableStateOf(false) }
-    var nonceEdit by remember { mutableStateOf(false) }
-    var gasEdit by remember { mutableStateOf(false) }
+    val editor = rememberPlanEditor()
+    val runner = rememberBusyRunner()
+    val busy = runner.busy
+    val error = runner.error
 
     if (parsed is Parsed.Tx && chain != null && signerNow != null) {
         LaunchedEffect(item) {
             try {
-                val p = SendTx.plan(chain, signerNow, parsed.t.to, parsed.t.value, data = parsed.t.data)
-                plan = p
-                basePlan = p
+                val p =
+                    SendTx.plan(chain, signerNow, parsed.t.to, parsed.t.value, data = parsed.t.data)
+                editor.load(p)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = e.message ?: "Could not prepare transaction"
+                runner.error = e.message ?: "Could not prepare transaction"
             }
         }
     }
 
-    suspend fun <T> asSigner(block: suspend (Credentials) -> T): T {
-        val row = signerRow ?: error("Wallet not found")
-        return vault.withCredentials(activity, row.id) { c ->
-            check(c.address.equals(signer, ignoreCase = true)) { "Wallet key does not match the site's account" }
-            block(c)
-        }
-    }
-
-    val tokens = if (chain != null && chain.chainId == vm.selected?.chainId) vm.tokens else emptyList()
-    val summary = if (parsed is Parsed.Tx && chain != null) analyze(parsed.t, chain, tokens) else null
+    val tokens =
+        if (chain != null && chain.chainId == vm.selected?.chainId) vm.tokens else emptyList()
+    val summary =
+        if (parsed is Parsed.Tx && chain != null) analyze(parsed.t, chain, tokens) else null
 
     var guess by remember(item) { mutableStateOf<SelectorLookup.Guess?>(null) }
     if (parsed is Parsed.Tx && summary?.verb == "Contract call" && parsed.t.data.isNotEmpty()) {
@@ -261,39 +274,32 @@ fun WcRequestScreen(
         is Parsed.Bad -> "Request"
     }
     val canApprove = !blocked && !busy && when (parsed) {
-        is Parsed.Tx -> plan != null
+        is Parsed.Tx -> editor.plan != null
         is Parsed.Bad -> false
         else -> true
     }
 
-    fun reject() { if (!busy) WcService.respondError(item) }
+    fun reject() {
+        if (!busy) WcService.respondError(item)
+    }
 
     fun approve() {
         if (!canApprove) return
-        scope.launch {
-            busy = true
-            error = null
-            try {
-                val result: String = when (parsed) {
-                    is Parsed.Msg -> asSigner { WcSigner.signPersonal(it, parsed.m.bytes) }
-                    is Parsed.Typed -> asSigner { WcSigner.signTyped(it, parsed.t) }
-                    is Parsed.Tx -> {
-                        val pl = plan ?: return@launch
-                        val desc = WcSigner.describe(parsed.t, tokens).first
-                        vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
-                        asSigner { SendTx.signAndSend(pl, it) }
-                    }
-                    is Parsed.Bad -> return@launch
+        runner.launch {
+            val result: String = when (parsed) {
+                is Parsed.Msg -> session.sign { WcSigner.signPersonal(it, parsed.m.bytes) }
+                is Parsed.Typed -> session.sign { WcSigner.signTyped(it, parsed.t) }
+                is Parsed.Tx -> {
+                    val pl = editor.plan ?: return@launch
+                    val desc = WcSigner.describe(parsed.t, tokens).first
+                    vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
+                    session.sign { SendTx.signAndSend(pl, it) }
                 }
-                WcService.respondResult(item, result)
-                if (parsed is Parsed.Tx && isActive) vm.refresh()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Failed"
-            } finally {
-                busy = false
+
+                is Parsed.Bad -> return@launch
             }
+            WcService.respondResult(item, result)
+            if (parsed is Parsed.Tx && isActive) vm.refresh()
         }
     }
 
@@ -307,38 +313,37 @@ fun WcRequestScreen(
         )
     ) {
         Surface(Modifier.fillMaxSize(), color = Dim.Bg, contentColor = Dim.Ink) {
-            Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .systemBarsPadding()
+            ) {
                 Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 16.dp),
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 12.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     PageHeader(title) { reject() }
 
-                    // site: green when the domain is verified, red otherwise. Tap for the check.
-                    Column(Modifier.clickable { siteInfo = true }.padding(top = 4.dp)) {
-                        Text(
-                            site?.name?.ifBlank { null } ?: "Unknown site",
-                            fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
-                            color = if (verified) TxOk else Dim.Danger, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(site?.url ?: "", fontSize = 14.sp, color = Dim.Mid, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (blocked) Text(warn, fontSize = 14.sp, color = Dim.Danger)
-                    if (signerRow != null && signerNow != null && !isActive) {
-                        Text(
-                            "Not your active wallet. This will be signed by ${signerRow.name} (${shortAddress(signerNow)}).",
-                            fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger
-                        )
-                    }
+                    WcSiteHeader(
+                        name = site?.name,
+                        url = site?.url,
+                        verified = verified,
+                        warn = warn,
+                        blocked = blocked,
+                        otherWallet = session.otherWallet
+                    )
 
                     // amount
                     if (summary != null && chain != null) {
                         Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
                             Text(
                                 if (summary.amount == null) "" else summary.verb,
-                                fontSize = 15.sp, color = if (summary.danger) Dim.Danger else Dim.Mid
+                                fontSize = 15.sp,
+                                color = if (summary.danger) Dim.Danger else Dim.Mid
                             )
                             Text(
                                 summary.amount ?: summary.verb,
@@ -365,7 +370,10 @@ fun WcRequestScreen(
                     // from / to
                     if (parsed !is Parsed.Bad && signerNow != null) {
                         TxCard {
-                            TxPartyRow(if (parsed is Parsed.Tx) "From" else "Wallet", rememberParty(vm, signerNow))
+                            TxPartyRow(
+                                if (parsed is Parsed.Tx) "From" else "Wallet",
+                                rememberParty(vm, signerNow)
+                            )
                             if (summary?.party != null) {
                                 TxLine()
                                 TxPartyRow(summary.partyLabel, rememberParty(vm, summary.party))
@@ -378,41 +386,53 @@ fun WcRequestScreen(
                         && !(summary.fiatNative && summary.amount != null)
                     ) {
                         TxCard {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Text("Also sends", fontSize = 15.sp, color = Dim.Mid)
                                 Text(
-                                    shortAmount(parsed.t.value, chain.decimals) + " " + chain.symbol,
+                                    shortAmount(
+                                        parsed.t.value,
+                                        chain.decimals
+                                    ) + " " + chain.symbol,
                                     fontSize = 15.sp, fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }
                     }
 
-                    // network
-                    if (chain != null) {
-                        TxCard {
-                            Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Network", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                                Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
-                            }
-                        }
-                    }
+                    if (chain != null) TxNetworkCard(chain)
 
                     // what the request is, in words
                     when (parsed) {
                         is Parsed.Msg -> TxCard {
                             Text("Message", fontSize = 14.sp, color = Dim.Mid)
                             Spacer(Modifier.height(6.dp))
-                            if (!parsed.m.isText) Text("Binary data, not readable text:", color = Dim.Danger, fontSize = 14.sp)
+                            if (!parsed.m.isText) Text(
+                                "Binary data, not readable text:",
+                                color = Dim.Danger,
+                                fontSize = 14.sp
+                            )
                             TxMono(parsed.m.text)
                             Spacer(Modifier.height(8.dp))
-                            Text("Signing proves you own this address. It does not move funds.", fontSize = 13.sp, color = Dim.Mid)
+                            Text(
+                                "Signing proves you own this address. It does not move funds.",
+                                fontSize = 13.sp,
+                                color = Dim.Mid
+                            )
                         }
+
                         is Parsed.Typed -> TxCard {
                             Text("Type: ${parsed.t.primaryType}", fontWeight = FontWeight.SemiBold)
                             parsed.t.domainName?.let { Text("Domain: $it", fontSize = 14.sp) }
-                            parsed.t.verifyingContract?.let { Text("Contract: $it", fontSize = 13.sp, color = Dim.Mid) }
+                            parsed.t.verifyingContract?.let {
+                                Text(
+                                    "Contract: $it",
+                                    fontSize = 13.sp,
+                                    color = Dim.Mid
+                                )
+                            }
                             if (parsed.t.looksLikePermit) {
                                 Spacer(Modifier.height(8.dp))
                                 Text(
@@ -424,108 +444,92 @@ fun WcRequestScreen(
                             Spacer(Modifier.height(8.dp))
                             TxMono(parsed.t.pretty)
                         }
+
                         is Parsed.Tx -> {
                             if (summary != null && !summary.plain && !summary.isTransfer) {
                                 val (desc, danger) = WcSigner.describe(parsed.t, tokens)
-                                TxCard {
-                                    Text(desc, color = if (danger) Dim.Danger else Dim.Ink, fontSize = 14.sp)
+                                if ("Not decoded" !in desc) {
+                                    TxCard {
+                                        Text(
+                                            desc,
+                                            color = if (danger) Dim.Danger else Dim.Ink,
+                                            fontSize = 14.sp
+                                        )
+                                    }
                                 }
                             }
                             guess?.let { GuessCard(it) }
                         }
+
                         else -> {}
                     }
 
-                    // max fee, tap to change
                     if (parsed is Parsed.Tx && chain != null) {
-                        val p = plan
-                        TxCard(Modifier.clickable(enabled = p != null && !busy) { feeEdit = true }) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Max fee", fontSize = 15.sp, color = Dim.Mid)
-                                    if (p != null && p != basePlan && p.fee != basePlan?.fee)
-                                        Text("Edited", fontSize = 12.sp, color = Dim.Accent)
-                                }
-                                if (p == null) {
-                                    Text(if (error == null) "Preparing…" else "Unavailable", fontSize = 15.sp, color = Dim.Mid)
-                                } else {
-                                    val fiat = if (chain.chainId == vm.selected?.chainId) vm.fiat(null, p.maxFeeWei) else null
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            fiat ?: (Rpc.formatUnits(p.maxFeeWei, chain.decimals, 8) + " " + chain.symbol),
-                                            fontSize = 16.sp, fontWeight = FontWeight.SemiBold
-                                        )
-                                        if (fiat != null) Text(
-                                            Rpc.formatUnits(p.maxFeeWei, chain.decimals, 8) + " " + chain.symbol,
-                                            fontSize = 12.sp, color = Dim.Mid
-                                        )
-                                    }
-                                    Spacer(Modifier.width(10.dp))
-                                    Icon(Ic.Edit, "Edit fee", Modifier.size(18.dp), tint = Dim.Mid)
-                                }
-                            }
-                        }
+                        TxFeeCard(
+                            vm,
+                            chain,
+                            editor,
+                            busy,
+                            waiting = if (error == null) "Preparing…" else "Unavailable"
+                        )
                     }
 
-                    if (parsed is Parsed.Tx && chain != null) plan?.let { SimulationCard(vm, chain, it) }
+                    if (parsed is Parsed.Tx && chain != null) editor.plan?.let {
+                        SimulationCard(
+                            vm,
+                            chain,
+                            it
+                        )
+                    }
 
-                    // advanced
                     if (parsed !is Parsed.Bad) {
-                        TxCard(Modifier.clickable { advanced = !advanced }) {
-                            Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Advanced details", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                                Icon(
-                                    Ic.ChevronDown, null,
-                                    Modifier.size(18.dp).rotate(if (advanced) 180f else 0f), tint = Dim.Mid
-                                )
-                            }
-                            if (advanced) {
-                                Spacer(Modifier.height(8.dp))
-                                when (parsed) {
-                                    is Parsed.Tx -> {
-                                        val p = plan
-                                        if (p != null) {
-                                            Row(
-                                                Modifier.fillMaxWidth().clickable(enabled = !busy) { nonceEdit = true }
-                                                    .padding(vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text("Nonce", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                                                Text(p.nonce.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                                Spacer(Modifier.width(10.dp))
-                                                Icon(Ic.Edit, "Edit nonce", Modifier.size(16.dp), tint = Dim.Mid)
-                                            }
-                                            Row(
-                                                Modifier.fillMaxWidth().clickable(enabled = !busy) { gasEdit = true }.padding(vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text("Gas limit", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
-                                                Text(p.gasLimit.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                                Spacer(Modifier.width(10.dp))
-                                                Icon(Ic.Edit, "Edit gas limit", Modifier.size(16.dp), tint = Dim.Mid)
-                                            }
-                                            summary?.exact?.let {
-                                                TxLabel("Exact amount", top = 12)
-                                                TxMono(it)
-                                            }
-                                        }
-                                        Text("To", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(vertical = 8.dp))
-                                        TxMono(parsed.t.to)
-                                        Text("Data", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(vertical = 8.dp))
-                                        if (parsed.t.data.isEmpty()) Text("No data", fontSize = 14.sp) else TxMono(parsed.t.data)
-                                        if (summary != null && !summary.plain) {
-                                            Text("Decoded", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                                            Text(WcSigner.describe(parsed.t, tokens).first, fontSize = 14.sp)
+                        TxAdvanced {
+                            when (parsed) {
+                                is Parsed.Tx -> {
+                                    if (editor.plan != null) {
+                                        TxPlanRows(editor, busy)
+                                        summary?.exact?.let {
+                                            TxLabel("Exact amount", top = 12)
+                                            TxMono(it)
                                         }
                                     }
-                                    is Parsed.Msg -> {
-                                        Text("Raw message (hex)", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(vertical = 8.dp))
-                                        TxMono(Numeric.toHexString(parsed.m.bytes))
-                                    }
-                                    is Parsed.Typed -> {
-                                        Text("Raw typed data", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.padding(vertical = 8.dp))
-                                        TxMono(parsed.t.json)
-                                    }
+                                    Text(
+                                        "To",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                    TxMono(parsed.t.to)
+                                    Text(
+                                        "Data",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                    if (parsed.t.data.isEmpty()) Text(
+                                        "No data",
+                                        fontSize = 14.sp
+                                    ) else TxMono(parsed.t.data)
+                                }
+
+                                is Parsed.Msg -> {
+                                    Text(
+                                        "Raw message (hex)",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                    TxMono(Numeric.toHexString(parsed.m.bytes))
+                                }
+
+                                is Parsed.Typed -> {
+                                    Text(
+                                        "Raw typed data",
+                                        fontSize = 15.sp,
+                                        color = Dim.Mid,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                    TxMono(parsed.t.json)
                                 }
                             }
                         }
@@ -536,7 +540,9 @@ fun WcRequestScreen(
 
                 // buttons
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (parsed is Parsed.Bad) {
@@ -546,7 +552,9 @@ fun WcRequestScreen(
                         PrimaryButton(
                             if (busy) "Working…" else if (parsed is Parsed.Tx) "Send" else "Sign",
                             { approve() },
-                            Modifier.weight(1f).alpha(if (canApprove || busy) 1f else 0.4f)
+                            Modifier
+                                .weight(1f)
+                                .alpha(if (canApprove || busy) 1f else 0.4f)
                         )
                     }
                 }
@@ -554,42 +562,5 @@ fun WcRequestScreen(
         }
     }
 
-    if (siteInfo) {
-        AlertDialog(
-            onDismissRequest = { siteInfo = false },
-            title = { Text("Domain check") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(warn, color = if (blocked || !verified) Dim.Danger else TxOk)
-                    Text("Site says: ${site?.url ?: "unknown"}", fontSize = 14.sp, color = Dim.Mid)
-                }
-            },
-            confirmButton = { TextButton(onClick = { siteInfo = false }) { Text("Close") } }
-        )
-    }
-
-    val p = plan
-    val base = basePlan
-    if (feeEdit && p != null && base != null) {
-        TxFeeDialog(
-            plan = p, base = base,
-            onSave = { plan = p.copy(fee = it); feeEdit = false },
-            onDismiss = { feeEdit = false }
-        )
-    }
-    if (nonceEdit && p != null) {
-        TxNonceDialog(
-            current = p.nonce,
-            onSave = { plan = p.copy(nonce = it); nonceEdit = false },
-            onDismiss = { nonceEdit = false }
-        )
-    }
-    if (gasEdit && p != null && base != null) {
-        TxGasDialog(
-            current = p.gasLimit,
-            base = base.gasLimit,
-            onSave = { plan = p.copy(gasLimit = it); gasEdit = false },
-            onDismiss = { gasEdit = false }
-        )
-    }
+    PlanEditorDialogs(editor)
 }

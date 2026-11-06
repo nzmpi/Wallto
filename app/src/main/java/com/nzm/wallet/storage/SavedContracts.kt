@@ -2,6 +2,7 @@ package com.nzm.wallet.storage
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
+import com.nzm.wallet.utils.Helpers.getPrefs
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -23,14 +24,17 @@ object SavedContracts {
     fun load(context: Context) {
         if (appContext != null) return
         appContext = context.applicationContext
-        val raw = appContext!!.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null) ?: return
+        val raw = appContext!!.getPrefs(PREFS).getString(KEY, null) ?: return
         try {
             val a = JSONArray(raw)
             for (i in 0 until a.length()) {
                 val o = a.getJSONObject(i)
                 items.add(
                     SavedContract(
-                        o.getString("id"), o.getLong("chainId"), o.getString("address"), o.getString("name"),
+                        o.getString("id"),
+                        o.getLong("chainId"),
+                        o.getString("address"),
+                        o.getString("name"),
                         o.optString("abi", "").ifBlank { null }
                     )
                 )
@@ -48,7 +52,7 @@ object SavedContracts {
                     .put("name", it.name).put("abi", it.abi ?: "")
             )
         }
-        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()?.putString(KEY, a.toString())?.apply()
+        appContext?.getPrefs(PREFS)?.edit()?.putString(KEY, a.toString())?.apply()
     }
 
     fun find(chainId: Long, address: String): SavedContract? =
@@ -62,7 +66,9 @@ object SavedContracts {
 
     fun setAbi(id: String, abi: String) {
         val i = items.indexOfFirst { it.id == id }
-        if (i >= 0) { items[i] = items[i].copy(abi = abi); persist() }
+        if (i >= 0) {
+            items[i] = items[i].copy(abi = abi); persist()
+        }
     }
 
     fun remove(id: String) {

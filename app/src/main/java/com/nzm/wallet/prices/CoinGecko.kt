@@ -55,14 +55,19 @@ object CoinGecko {
     }
 
     /** Result keys are lowercase contract addresses. Tokens CoinGecko does not know are absent. */
-    suspend fun tokenPrices(key: String, platformId: String, addresses: List<String>): Map<String, Double> {
+    suspend fun tokenPrices(
+        key: String,
+        platformId: String,
+        addresses: List<String>
+    ): Map<String, Double> {
         val result = mutableMapOf<String, Double>()
         for (batch in addresses.chunked(100)) {
             val path = "/simple/token_price/${Uri.encode(platformId)}" +
                     "?contract_addresses=${batch.joinToString(",")}&vs_currencies=usd"
             val o = JSONObject(get(path, key))
             o.keys().forEach { k ->
-                o.optJSONObject(k)?.optDouble("usd")?.takeIf { !it.isNaN() }?.let { result[k.lowercase()] = it }
+                o.optJSONObject(k)?.optDouble("usd")?.takeIf { !it.isNaN() }
+                    ?.let { result[k.lowercase()] = it }
             }
         }
         return result

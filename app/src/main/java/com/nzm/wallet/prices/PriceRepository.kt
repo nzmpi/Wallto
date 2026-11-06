@@ -1,8 +1,8 @@
 package com.nzm.wallet.prices
 
 import android.content.Context
-import com.nzm.wallet.chain.Chain
-import com.nzm.wallet.chain.Token
+import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.dbs.Token
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -11,10 +11,13 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import androidx.core.content.edit
+import com.nzm.wallet.storage.PriceKeyStore
+import com.nzm.wallet.utils.Helpers.getPrefs
 
 data class PriceSnapshot(val at: Long, val native: Double?, val tokens: Map<String, Double>) {
     fun isFromToday(): Boolean =
-        at > 0 && Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).toLocalDate() == LocalDate.now()
+        at > 0 && Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault())
+            .toLocalDate() == LocalDate.now()
 
     companion object {
         val EMPTY = PriceSnapshot(0L, null, emptyMap())
@@ -22,7 +25,7 @@ data class PriceSnapshot(val at: Long, val native: Double?, val tokens: Map<Stri
 }
 
 class PriceRepository(context: Context) {
-    private val prefs = context.getSharedPreferences("price_prefs", Context.MODE_PRIVATE)
+    private val prefs = context.getPrefs("price_prefs")
     val keyStore = PriceKeyStore(context)
 
     fun snapshot(chainId: Long): PriceSnapshot {
@@ -75,7 +78,8 @@ class PriceRepository(context: Context) {
         val arr = JSONArray()
         list.filter { it.chainId != null }.forEach {
             arr.put(
-                JSONObject().put("id", it.id).put("chainId", it.chainId).put("native", it.nativeCoinId ?: JSONObject.NULL)
+                JSONObject().put("id", it.id).put("chainId", it.chainId)
+                    .put("native", it.nativeCoinId ?: JSONObject.NULL)
             )
         }
         prefs.edit {
@@ -136,9 +140,16 @@ class PriceRepository(context: Context) {
             }
         }
         val f = failure
-        if (succeeded == 0 && f != null) throw (f as? IOException ?: IOException(f.message ?: "Price request failed"))
+        if (succeeded == 0 && f != null) throw (f as? IOException ?: IOException(
+            f.message ?: "Price request failed"
+        ))
 
-        return PriceSnapshot(System.currentTimeMillis(), native, merged).also { save(chain.chainId, it) }
+        return PriceSnapshot(System.currentTimeMillis(), native, merged).also {
+            save(
+                chain.chainId,
+                it
+            )
+        }
     }
 
     private companion object {

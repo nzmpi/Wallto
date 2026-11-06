@@ -4,12 +4,32 @@ import android.content.Context
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -18,13 +38,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
-import com.nzm.wallet.chain.Chain
-import com.nzm.wallet.chain.Contact
-import com.nzm.wallet.chain.SendTx
-import com.nzm.wallet.chain.Token
-import com.nzm.wallet.chain.WalletRow
+import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.dbs.Contact
+import com.nzm.wallet.dbs.Token
+import com.nzm.wallet.dbs.WalletRow
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.SHAPE
+import com.nzm.wallet.utils.Helpers
+import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.launch
 import org.web3j.crypto.Keys
@@ -52,7 +74,16 @@ fun SettingsScreen(
 ) {
     Crossfade(targetState = page, animationSpec = tween(140), label = "settings") { p ->
         when (p) {
-            SettingsPage.Root -> SettingsRoot(activity, vault, vm, address, onPage, onReveal, onWipe)
+            SettingsPage.Root -> SettingsRoot(
+                activity,
+                vault,
+                vm,
+                address,
+                onPage,
+                onReveal,
+                onWipe
+            )
+
             SettingsPage.Wallets -> WalletsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Chains -> ChainsPage(vm) { onPage(SettingsPage.Root) }
             SettingsPage.Tokens -> TokensPage(activity, vm, address) { onPage(SettingsPage.Root) }
@@ -427,7 +458,7 @@ private fun PriceKeyDialog(vm: WalletViewModel, onClose: () -> Unit) {
                     label = { Text(if (vm.priceKeySet) "New key" else "API key") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = SHAPE,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -468,7 +499,7 @@ private fun ReownDialog(activity: FragmentActivity, onClose: () -> Unit) {
                     label = { Text(if (idSet) "New ID" else "Project ID") },
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp)
+                    shape = SHAPE
                 )
             }
         },
@@ -514,7 +545,7 @@ private fun AlchemyDialog(ctx: Context, onClose: () -> Unit) {
                     text, { text = it }, singleLine = true,
                     label = { Text(if (keySet) "New key" else "API key") },
                     visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)
+                    modifier = Modifier.fillMaxWidth(), shape = SHAPE
                 )
             }
         },
@@ -619,12 +650,12 @@ private fun ContactEditDialog(vm: WalletViewModel, existing: Contact?, onClose: 
                 OutlinedTextField(
                     name, { name = it.take(32) }, label = { Text("Name") },
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp)
+                    shape = SHAPE
                 )
                 OutlinedTextField(
                     address, { address = it.trim() }, label = { Text("Address") },
                     enabled = existing == null, modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp)
+                    shape = SHAPE
                 )
                 error?.let { Text(it, color = Dim.Danger) }
             }
@@ -633,7 +664,7 @@ private fun ContactEditDialog(vm: WalletViewModel, existing: Contact?, onClose: 
             TextButton(onClick = {
                 when {
                     name.isBlank() -> error = "Enter a name"
-                    !SendTx.isValidAddress(address) -> error = "Invalid address or checksum"
+                    !Helpers.isValidAddress(address) -> error = "Invalid address or checksum"
                     else -> {
                         vm.saveContact(
                             Contact(Keys.toChecksumAddress(address), name.trim(), existing?.ens)

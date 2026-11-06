@@ -1,21 +1,29 @@
 package com.nzm.wallet.ui
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.nzm.wallet.chain.Chain
 import com.nzm.wallet.chain.Erc20
-import com.nzm.wallet.chain.SendTx
-import com.nzm.wallet.chain.Token
-import com.nzm.wallet.chain.TokenRepository
+import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.dbs.Token
+import com.nzm.wallet.dbs.TokenRepository
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Constants.SHAPE
+import com.nzm.wallet.utils.Helpers.isValidAddress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.web3j.crypto.Keys
@@ -36,7 +44,7 @@ fun TokenDialog(chain: Chain, repo: TokenRepository, onClose: () -> Unit) {
             try {
                 if (f == null) {
                     val input = address.trim()
-                    require(SendTx.isValidAddress(input)) { "Invalid contract address or checksum" }
+                    require(isValidAddress(input)) { "Invalid contract address or checksum" }
                     repo.get(chain.chainId, Keys.toChecksumAddress(input))?.let {
                         throw IllegalArgumentException("Already added: ${it.symbol} (${it.name})")
                     }
@@ -60,7 +68,11 @@ fun TokenDialog(chain: Chain, repo: TokenRepository, onClose: () -> Unit) {
         bottom = {
             OutlineButton(
                 if (f != null) "Back" else "Cancel",
-                { if (!busy) { if (f != null) found = null else onClose() } },
+                {
+                    if (!busy) {
+                        if (f != null) found = null else onClose()
+                    }
+                },
                 Modifier.weight(1f)
             )
             PrimaryButton(
@@ -74,7 +86,12 @@ fun TokenDialog(chain: Chain, repo: TokenRepository, onClose: () -> Unit) {
         PageHeader("Add token") { if (!busy) onClose() }
 
         TxCard {
-            Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text("Network", fontSize = 15.sp, color = Dim.Mid, modifier = Modifier.weight(1f))
                 Text(chain.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 if (chain.isTestnet) Text("  testnet", fontSize = 13.sp, color = Dim.Mid)
@@ -85,7 +102,7 @@ fun TokenDialog(chain: Chain, repo: TokenRepository, onClose: () -> Unit) {
             OutlinedTextField(
                 address, { address = it }, label = { Text("Token contract address") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp)
+                shape = SHAPE
             )
         } else {
             TxAmount("Token", f.symbol)
