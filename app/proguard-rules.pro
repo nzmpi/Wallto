@@ -12,3 +12,7 @@
 -dontwarn org.slf4j.**
 -dontwarn javax.naming.**
 -dontwarn java.lang.management.**
+# kotlin-reflect breaks when R8 renames or repackages the Kotlin stdlib
+-keep class kotlin.** { *; }
+-keep class kotlin.Metadata { *; }
+-dontwarn kotlin.**
