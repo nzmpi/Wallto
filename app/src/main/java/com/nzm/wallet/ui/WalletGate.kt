@@ -1,9 +1,13 @@
 package com.nzm.wallet.ui
 
+import android.content.ClipData
+import android.content.ClipDescription
 import android.content.ClipboardManager
+import android.os.PersistableBundle
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -485,10 +489,20 @@ private fun KeyLostScreen(onReset: () -> Unit) {
 
 @Composable
 private fun RevealDialog(type: SecretType, secret: String, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val clipboard = remember { context.getSystemService(ClipboardManager::class.java) }
+    var copied by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         delay(60_000.milliseconds)
         onClose()
     }
+
+    // Runs on every way out: Hide, the 60 s timer, back press, or the dialog leaving composition.
+    DisposableEffect(Unit) {
+        onDispose { if (copied) clipboard.clearPrimaryClip() }
+    }
+
     AlertDialog(
         onDismissRequest = onClose,
         // dialogs are separate windows: FLAG_SECURE on the activity does not cover them
@@ -497,7 +511,23 @@ private fun RevealDialog(type: SecretType, secret: String, onClose: () -> Unit) 
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Anyone with this can take all funds. Never share it.")
-                Text(secret, color = Dim.Ink)
+                // tap to copy
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val clip = ClipData.newPlainText("secret", secret).apply {
+                                // keeps the value out of the clipboard preview (Android 13+)
+                                description.extras = PersistableBundle().apply {
+                                    putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+                                }
+                            }
+                            clipboard.setPrimaryClip(clip)
+                            copied = true
+                        }) {
+                    Text(secret, color = Dim.Ink)
+                }
+                Spacer(Modifier.height(8.dp))
                 Text("Hides in 60 seconds.")
             }
         },
