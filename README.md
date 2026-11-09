@@ -74,11 +74,11 @@ Keep the release keystore and its passwords backed up and outside the repository
 
 Set these in the app under Settings. None of them is required to send funds.
 
-| Setting | What it is for |
-|---|---|
+| Setting          | What it is for                                                                                                                           |
+|------------------|------------------------------------------------------------------------------------------------------------------------------------------|
 | Reown project ID | Needed for WalletConnect. Create one for free at the Reown dashboard. The SDK reads it at startup, so restart the app after changing it. |
-| Alchemy key | Transaction simulation. |
-| CoinGecko key | Fiat prices (a demo key works). |
+| Alchemy key      | Transaction simulation.                                                                                                                  |
+| CoinGecko key    | Fiat prices (a demo key works).                                                                                                          |
 
 ## Stack
 
@@ -109,7 +109,7 @@ wc/        WalletConnect service and request signing
 
 - EVM chains only.
 - The ABI codec handles static types, `bytes`, `string` and arrays of static types. Tuples and nested or fixed-size arrays are not supported, so such calls are shown without decoded arguments.
-- Only supports phones with Andriod 14 and higher with biometrics.
+- Only supports phones with Android 14 and higher with biometrics.
 - No notifications.  
 - Activity only shows outgoing transactions.
 

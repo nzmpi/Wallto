@@ -4,10 +4,7 @@ import com.nzm.wallet.abi.AbiCodec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.web3j.abi.FunctionEncoder
-import org.web3j.abi.FunctionReturnDecoder
 import org.web3j.abi.datatypes.Function
-import org.web3j.abi.datatypes.Type
-import org.web3j.crypto.Keys
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameterName
 import org.web3j.protocol.core.Response
@@ -15,9 +12,7 @@ import org.web3j.protocol.core.methods.request.Transaction
 import org.web3j.protocol.http.HttpService
 import org.web3j.utils.Numeric
 import java.io.IOException
-import java.math.BigDecimal
 import java.math.BigInteger
-import java.math.RoundingMode
 
 object Rpc {
     suspend fun chainId(rpcUrl: String): Long = withContext(Dispatchers.IO) {
