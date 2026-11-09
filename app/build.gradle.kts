@@ -42,23 +42,23 @@ android {
     }
 
     packaging {
-        packaging {
-            resources {
-                excludes += setOf(
-                    "META-INF/DEPENDENCIES",
-                    "META-INF/LICENSE*",
-                    "META-INF/NOTICE*",
-                    "META-INF/INDEX.LIST",
-                    "META-INF/FastDoubleParser-*",
-                    "META-INF/io.netty.versions.properties",
-                    "META-INF/thirdparty-LICENSE"
-                )
-            }
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/INDEX.LIST",
+                "META-INF/FastDoubleParser-*",
+                "META-INF/io.netty.versions.properties",
+                "META-INF/thirdparty-LICENSE",
+                "META-INF/Schubfach-LICENSE"
+            )
         }
     }
 }
 
 dependencies {
+    implementation(platform(libs.netty.bom))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
