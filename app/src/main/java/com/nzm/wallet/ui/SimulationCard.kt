@@ -31,6 +31,9 @@ import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.SHAPE
 import com.nzm.wallet.utils.Helpers.shortAddress
+import com.nzm.wallet.chain.SimKey
+import com.nzm.wallet.chain.SimResult
+import com.nzm.wallet.chain.TxSim
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 

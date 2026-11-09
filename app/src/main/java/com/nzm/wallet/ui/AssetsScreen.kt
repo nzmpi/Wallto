@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.dbs.Token
+import com.nzm.wallet.storage.AssetIcon
 import com.nzm.wallet.ui.theme.Dim
 
 @Composable

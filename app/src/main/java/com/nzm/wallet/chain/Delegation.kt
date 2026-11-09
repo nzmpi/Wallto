@@ -1,7 +1,5 @@
-package com.nzm.wallet.ui
+package com.nzm.wallet.chain
 
-import com.nzm.wallet.chain.Fee
-import com.nzm.wallet.chain.TxPlan
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.web3j.crypto.Credentials

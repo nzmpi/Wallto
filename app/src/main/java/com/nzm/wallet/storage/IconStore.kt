@@ -1,4 +1,4 @@
-package com.nzm.wallet.ui
+package com.nzm.wallet.storage
 
 import android.content.Context
 import android.graphics.BitmapFactory

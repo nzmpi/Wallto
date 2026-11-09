@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import androidx.core.content.edit
-import com.nzm.wallet.ui.Batch
+import com.nzm.wallet.chain.Batch
 import com.nzm.wallet.utils.Helpers.getPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

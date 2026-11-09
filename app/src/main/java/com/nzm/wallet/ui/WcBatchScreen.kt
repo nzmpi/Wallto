@@ -17,6 +17,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.abi.SelectorLookup
+import com.nzm.wallet.chain.Batch
+import com.nzm.wallet.chain.BatchItem
+import com.nzm.wallet.chain.BatchStatus
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token

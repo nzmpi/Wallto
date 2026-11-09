@@ -53,12 +53,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
+import com.nzm.wallet.chain.BatchItem
 import com.nzm.wallet.chain.Ens
 import com.nzm.wallet.chain.Erc20
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.chain.TxPlan
 import com.nzm.wallet.dbs.Contact
 import com.nzm.wallet.dbs.Token
+import com.nzm.wallet.storage.AssetIcon
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.ZERO

@@ -1,4 +1,4 @@
-package com.nzm.wallet.ui
+package com.nzm.wallet.core
 
 import android.content.ClipData
 import android.content.ClipDescription
@@ -52,13 +52,21 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.nzm.wallet.core.WalletCore
 import com.nzm.wallet.dbs.WalletRow
 import com.nzm.wallet.storage.KeystoreVault
 import com.nzm.wallet.storage.SecretType
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.SHAPE
+import com.nzm.wallet.chain.SimKey
+import com.nzm.wallet.ui.ConfirmDialog
+import com.nzm.wallet.ui.Hairline
+import com.nzm.wallet.ui.Ic
+import com.nzm.wallet.ui.MainShell
+import com.nzm.wallet.ui.OutlineButton
+import com.nzm.wallet.ui.PrimaryButton
+import com.nzm.wallet.ui.ScreenTitle
+import com.nzm.wallet.ui.WalletViewModel
 import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay

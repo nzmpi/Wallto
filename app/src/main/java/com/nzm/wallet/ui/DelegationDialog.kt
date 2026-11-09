@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import com.nzm.wallet.chain.Batch
+import com.nzm.wallet.chain.Delegation
 import com.nzm.wallet.chain.Rpc.isContract
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.dbs.Chain

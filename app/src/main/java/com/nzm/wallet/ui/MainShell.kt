@@ -40,6 +40,9 @@ import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.SHAPE
 import com.nzm.wallet.utils.Helpers.shortAddress
+import com.nzm.wallet.utils.ScanResult
+import com.nzm.wallet.utils.parseScan
+import com.nzm.wallet.utils.scanQr
 import com.nzm.wallet.wc.WcService
 
 enum class HomeTab(val label: String, val icon: ImageVector) {

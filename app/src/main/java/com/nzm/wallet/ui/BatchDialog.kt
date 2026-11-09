@@ -36,6 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.abi.AbiCodec
+import com.nzm.wallet.chain.Batch
+import com.nzm.wallet.chain.BatchItem
+import com.nzm.wallet.chain.BatchStatus
 import com.nzm.wallet.chain.Erc20
 import com.nzm.wallet.chain.Rpc
 import com.nzm.wallet.chain.SendTx

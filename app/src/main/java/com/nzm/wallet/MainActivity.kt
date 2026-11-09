@@ -10,7 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.ui.graphics.toArgb
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.storage.Vault
-import com.nzm.wallet.ui.WalletGate
+import com.nzm.wallet.core.WalletGate
 import com.nzm.wallet.ui.WalletViewModel
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.ui.theme.WalletTheme

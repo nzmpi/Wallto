@@ -26,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nzm.wallet.dbs.Chain
+import com.nzm.wallet.storage.AssetIcon
+import com.nzm.wallet.storage.ChainIcon
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.SHAPE
 

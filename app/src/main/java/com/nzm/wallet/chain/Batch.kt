@@ -1,4 +1,4 @@
-package com.nzm.wallet.ui
+package com.nzm.wallet.chain
 
 import com.nzm.wallet.chain.Rpc.ethCall
 import com.nzm.wallet.dbs.Chain
@@ -6,13 +6,16 @@ import com.nzm.wallet.dbs.Token
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.web3j.abi.FunctionEncoder
+import org.web3j.abi.TypeReference
 import org.web3j.abi.datatypes.Address
+import org.web3j.abi.datatypes.Bool
 import org.web3j.abi.datatypes.DynamicArray
 import org.web3j.abi.datatypes.DynamicBytes
 import org.web3j.abi.datatypes.DynamicStruct
 import org.web3j.abi.datatypes.Function
 import org.web3j.abi.datatypes.generated.Bytes32
 import org.web3j.abi.datatypes.generated.Uint256
+import org.web3j.crypto.Keys
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameterName
 import org.web3j.protocol.http.HttpService
@@ -60,11 +63,11 @@ object Batch {
             web3.shutdown()
         }
         val delegate = if (code.startsWith("0xef0100") && code.length == 8 + 40)
-            org.web3j.crypto.Keys.toChecksumAddress("0x" + code.substring(8)) else null
+            Keys.toChecksumAddress("0x" + code.substring(8)) else null
         if (delegate == null) return@withContext BatchStatus(null, false)
         val fn = Function(
             "supportsExecutionMode", listOf(mode(true)),
-            listOf(org.web3j.abi.TypeReference.create(org.web3j.abi.datatypes.Bool::class.java))
+            listOf(TypeReference.create(Bool::class.java))
         )
         val ok = try {
             val raw = ethCall(chain.rpcUrl, account, account, fn = fn)

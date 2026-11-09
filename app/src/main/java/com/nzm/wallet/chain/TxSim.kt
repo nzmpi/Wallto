@@ -1,10 +1,8 @@
-package com.nzm.wallet.ui
+package com.nzm.wallet.chain
 
 import android.content.Context
 import android.util.Base64
 import androidx.core.content.edit
-import com.nzm.wallet.chain.Erc20
-import com.nzm.wallet.chain.TxPlan
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.utils.Constants.PROVIDER
@@ -27,6 +25,7 @@ import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import kotlin.collections.iterator
 
 object SimKey {
     private const val ALIAS = "sim_api_key"

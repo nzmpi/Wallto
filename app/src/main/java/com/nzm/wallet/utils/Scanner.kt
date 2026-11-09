@@ -1,4 +1,4 @@
-package com.nzm.wallet.ui
+package com.nzm.wallet.utils
 
 import androidx.fragment.app.FragmentActivity
 import com.google.mlkit.vision.barcode.common.Barcode
