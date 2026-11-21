@@ -30,7 +30,9 @@ import com.nzm.wallet.utils.Helpers.fmt
 import com.nzm.wallet.utils.Helpers.isValidAddress
 import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.utils.Helpers.shortAmount
+import com.nzm.wallet.wc.CallKind
 import com.nzm.wallet.wc.WcService
+import com.nzm.wallet.wc.WcSigner
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
@@ -62,51 +64,47 @@ private fun decodeCall(
     if (data.isEmpty()) {
         return BatchItem("Send ${shortAmount(value, c.decimals)} ${c.symbol}", to, value, data)
     }
-    val hex = Numeric.toHexStringNoPrefix(data)
-    val sel = hex.take(8)
-    fun word(i: Int) = hex.drop(8 + i * 64).take(64)
-    fun addr(i: Int) = Keys.toChecksumAddress("0x" + word(i).takeLast(40))
-    val tk = tokens.firstOrNull { it.address.equals(to, true) }
-    try {
-        if (sel == "a9059cbb" && hex.length >= 8 + 128) {
-            val dest = addr(0)
-            val amt = BigInteger(word(1), 16)
-            return if (tk != null) BatchItem(
-                "Send ${shortAmount(amt, tk.decimals)} ${tk.symbol}", to, value, data,
-                recipient = dest, token = tk, spend = amt
-            ) else BatchItem(
-                "Send $amt raw units of an unlisted token", to, value, data,
-                listOf("Token is not in your list: ${shortAddress(to)}"), recipient = dest
-            )
-        }
-        if (sel == "095ea7b3" && hex.length >= 8 + 128) {
-            val spender = addr(0)
-            val amt = BigInteger(word(1), 16)
-            val unlimited = amt == MAX_UINT
-            val shown = when {
-                unlimited -> "UNLIMITED"
-                tk != null -> shortAmount(amt, tk.decimals)
-                else -> "$amt raw units of"
-            }
-            return BatchItem(
-                "Approve $shown ${tk?.symbol ?: "token"}", to, value, data,
-                buildList {
-                    if (unlimited) add("Unlimited approval lets ${shortAddress(spender)} spend all your tokens.")
-                    if (tk == null) add("Token is not in your list: ${shortAddress(to)}")
-                },
-                recipient = spender, link = "for"
-            )
-        }
-    } catch (_: Exception) {
+    val k = WcSigner.decodeCall(to, Numeric.toHexString(data), tokens)
+        ?: return BatchItem(
+            "Call 0x${Numeric.toHexStringNoPrefix(data).take(8)}",
+            to,
+            value,
+            data,
+            listOf("Unknown call. Check the calldata under Advanced details."),
+            link = "on"
+        )
+    val tk = k.token
+    val amount = WcSigner.amountLabel(k.amount, tk)
+    val unlisted = "Token is not in your list: ${shortAddress(to)}"
+    return when (k.kind) {
+        CallKind.TRANSFER -> if (tk != null) BatchItem(
+            "Send $amount", to, value, data,
+            recipient = k.party, token = tk, spend = k.amount
+        ) else BatchItem(
+            "Send $amount of an unlisted token", to, value, data,
+            listOf(unlisted), recipient = k.party
+        )
+
+        CallKind.APPROVE -> BatchItem(
+            "Approve $amount", to, value, data,
+            buildList {
+                if (k.amount == MAX_UINT) add("Unlimited approval lets ${shortAddress(k.party)} spend all your tokens.")
+                if (tk == null) add(unlisted)
+            },
+            recipient = k.party, link = "for"
+        )
+
+        CallKind.APPROVE_ALL -> BatchItem(
+            "Approve all tokens of ${shortAddress(to)}", to, value, data,
+            listOf("Gives ${shortAddress(k.party)} control of all your tokens in this collection."),
+            recipient = k.party, link = "for"
+        )
+
+        CallKind.TRANSFER_FROM -> BatchItem(
+            "Transfer $amount from ${shortAddress(k.from!!)}", to, value, data,
+            recipient = k.party
+        )
     }
-    return BatchItem(
-        "Call 0x$sel",
-        to,
-        value,
-        data,
-        listOf("Unknown call. Check the calldata under Advanced details."),
-        link = "on"
-    )
 }
 
 private fun parseRequest(item: WcService.Request, vm: WalletViewModel, signer: String): Req {

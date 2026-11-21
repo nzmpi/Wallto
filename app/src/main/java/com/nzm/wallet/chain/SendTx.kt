@@ -12,11 +12,9 @@ import org.web3j.crypto.RawTransaction
 import org.web3j.crypto.SignedRawTransaction
 import org.web3j.crypto.TransactionDecoder
 import org.web3j.crypto.TransactionEncoder
-import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameterName
 import org.web3j.protocol.core.Response
 import org.web3j.protocol.core.methods.request.Transaction
-import org.web3j.protocol.http.HttpService
 import org.web3j.utils.Numeric
 import java.io.IOException
 import java.math.BigInteger
@@ -65,69 +63,65 @@ object SendTx {
         data: String = "", recipient: String? = null,
         token: Token? = null, tokenAmount: BigInteger? = null
     ): TxPlan = withContext(Dispatchers.IO) {
-        val web3 = Web3j.build(HttpService(chain.rpcUrl))
-        try {
-            val nonce = web3.ethGetTransactionCount(from, DefaultBlockParameterName.PENDING)
-                .send().ok().transactionCount
-            val callTx =
-                if (data.isEmpty()) Transaction.createEtherTransaction(
-                    from,
-                    null,
-                    null,
-                    null,
-                    to,
-                    value
-                )
-                else Transaction.createFunctionCallTransaction(
-                    from,
-                    null,
-                    null,
-                    null,
-                    to,
-                    value,
-                    data
-                )
-            val est = web3.ethEstimateGas(callTx).send().ok().amountUsed
-            val gasLimit =
-                if (est == BigInteger.valueOf(21000)) est
-                else est * BigInteger.valueOf(11) / BigInteger.TEN // 10% headroom for contract recipients
-
-            val block = web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false)
-                .send().ok().block
-            val fee: Fee = if (block.baseFeePerGasRaw != null) {
-                val tip = try {
-                    web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
-                } catch (_: Exception) {
-                    GWEI
-                }
-                Fee.Eip1559(block.baseFeePerGas * BigInteger.valueOf(2) + tip, tip)
-            } else {
-                Fee.Legacy(web3.ethGasPrice().send().ok().gasPrice)
-            }
-
-            val plan = TxPlan(
-                chain,
+        val web3 = Rpc.web3(chain.rpcUrl)
+        val nonce = web3.ethGetTransactionCount(from, DefaultBlockParameterName.PENDING)
+            .send().ok().transactionCount
+        val callTx =
+            if (data.isEmpty()) Transaction.createEtherTransaction(
                 from,
+                null,
+                null,
+                null,
+                to,
+                value
+            )
+            else Transaction.createFunctionCallTransaction(
+                from,
+                null,
+                null,
+                null,
                 to,
                 value,
-                nonce,
-                gasLimit,
-                fee,
-                data,
-                recipient,
-                token,
-                tokenAmount
+                data
             )
-            val balance =
-                web3.ethGetBalance(from, DefaultBlockParameterName.LATEST).send().ok().balance
-            require(balance >= plan.maxTotalWei) {
-                "Insufficient funds. Need up to ${fmt(plan.maxTotalWei, chain, 8)}" +
-                        ", have ${formatUnits(balance, chain.decimals, 8)}"
+        val est = web3.ethEstimateGas(callTx).send().ok().amountUsed
+        val gasLimit =
+            if (est == BigInteger.valueOf(21000)) est
+            else est * BigInteger.valueOf(11) / BigInteger.TEN // 10% headroom for contract recipients
+
+        val block = web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false)
+            .send().ok().block
+        val fee: Fee = if (block.baseFeePerGasRaw != null) {
+            val tip = try {
+                web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
+            } catch (_: Exception) {
+                GWEI
             }
-            plan
-        } finally {
-            web3.shutdown()
+            Fee.Eip1559(block.baseFeePerGas * BigInteger.valueOf(2) + tip, tip)
+        } else {
+            Fee.Legacy(web3.ethGasPrice().send().ok().gasPrice)
         }
+
+        val plan = TxPlan(
+            chain,
+            from,
+            to,
+            value,
+            nonce,
+            gasLimit,
+            fee,
+            data,
+            recipient,
+            token,
+            tokenAmount
+        )
+        val balance =
+            web3.ethGetBalance(from, DefaultBlockParameterName.LATEST).send().ok().balance
+        require(balance >= plan.maxTotalWei) {
+            "Insufficient funds. Need up to ${fmt(plan.maxTotalWei, chain, 8)}" +
+                    ", have ${formatUnits(balance, chain.decimals, 8)}"
+        }
+        plan
     }
 
     /** Returns tx hash. Caller supplies short-lived credentials. */
@@ -169,68 +163,50 @@ object SendTx {
                     .equals(Numeric.cleanHexPrefix(plan.data), ignoreCase = true)
             ) { "Data mismatch" }
 
-            val web3 = Web3j.build(HttpService(c.rpcUrl))
+            val r = Rpc.web3(c.rpcUrl).ethSendRawTransaction(hex).send()
+            if (r.hasError()) throw IOException(r.error.message)
+            val hash = r.transactionHash
             try {
-                val r = web3.ethSendRawTransaction(hex).send()
-                if (r.hasError()) throw IOException(r.error.message)
-                val hash = r.transactionHash
-                try {
-                    onBroadcast?.invoke(plan, hash)
-                } catch (_: Exception) { /* history must never break a tx */
-                }
-                hash
-            } finally {
-                web3.shutdown()
+                onBroadcast?.invoke(plan, hash)
+            } catch (_: Exception) { /* history must never break a tx */
             }
+            hash
         }
 
     /** true = success, false = reverted, null = not mined in time. */
     suspend fun waitForReceipt(rpcUrl: String, hash: String, timeoutMs: Long = 120_000): Boolean? =
         withContext(Dispatchers.IO) {
-            val web3 = Web3j.build(HttpService(rpcUrl))
-            try {
-                val end = System.currentTimeMillis() + timeoutMs
-                while (System.currentTimeMillis() < end) {
-                    val receipt = web3.ethGetTransactionReceipt(hash).send().transactionReceipt
-                    if (receipt.isPresent) return@withContext receipt.get().isStatusOK
-                    delay(3000.milliseconds)
-                }
-                null
-            } finally {
-                web3.shutdown()
+            val web3 = Rpc.web3(rpcUrl)
+            val end = System.currentTimeMillis() + timeoutMs
+            while (System.currentTimeMillis() < end) {
+                val receipt = web3.ethGetTransactionReceipt(hash).send().transactionReceipt
+                if (receipt.isPresent) return@withContext receipt.get().isStatusOK
+                delay(3000.milliseconds)
             }
+            null
         }
 
     /** true = success, false = reverted, null = no receipt yet. */
     suspend fun receiptStatus(rpcUrl: String, hash: String): Boolean? =
         withContext(Dispatchers.IO) {
-            val web3 = Web3j.build(HttpService(rpcUrl))
-            try {
-                val receipt = web3.ethGetTransactionReceipt(hash).send().transactionReceipt
-                if (receipt.isPresent) receipt.get().isStatusOK else null
-            } finally {
-                web3.shutdown()
-            }
+            val receipt = Rpc.web3(rpcUrl).ethGetTransactionReceipt(hash).send().transactionReceipt
+            if (receipt.isPresent) receipt.get().isStatusOK else null
         }
 
     /** Fee per gas the same way plan() picks it. Used to compute "Max" for the native coin. */
     suspend fun maxFeePerGas(chain: Chain): BigInteger = withContext(Dispatchers.IO) {
-        val web3 = Web3j.build(HttpService(chain.rpcUrl))
-        try {
-            val block =
-                web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false).send().ok().block
-            if (block.baseFeePerGasRaw != null) {
-                val tip = try {
-                    web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
-                } catch (_: Exception) {
-                    GWEI
-                }
-                block.baseFeePerGas * BigInteger.valueOf(2) + tip
-            } else {
-                web3.ethGasPrice().send().ok().gasPrice
+        val web3 = Rpc.web3(chain.rpcUrl)
+        val block =
+            web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false).send().ok().block
+        if (block.baseFeePerGasRaw != null) {
+            val tip = try {
+                web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
+            } catch (_: Exception) {
+                GWEI
             }
-        } finally {
-            web3.shutdown()
+            block.baseFeePerGas * BigInteger.valueOf(2) + tip
+        } else {
+            web3.ethGasPrice().send().ok().gasPrice
         }
     }
 
@@ -243,16 +219,13 @@ object SendTx {
         val fee = maxFeePerGas(chain)
         val base = BigInteger.valueOf(21_000)
         val est = withContext(Dispatchers.IO) {
-            val web3 = Web3j.build(HttpService(chain.rpcUrl))
             try {
-                val r = web3.ethEstimateGas(
+                val r = Rpc.web3(chain.rpcUrl).ethEstimateGas(
                     Transaction.createEtherTransaction(from, null, null, null, from, BigInteger.ONE)
                 ).send()
                 if (r.hasError()) base else r.amountUsed.max(base)
             } catch (_: Exception) {
                 base
-            } finally {
-                web3.shutdown()
             }
         }
         val gas = if (est == base) est else est * BigInteger.valueOf(11) / BigInteger.TEN

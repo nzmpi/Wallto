@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import androidx.core.content.edit
 import com.nzm.wallet.chain.Batch
+import com.nzm.wallet.chain.Rpc
 import com.nzm.wallet.utils.Helpers.getPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,8 +23,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
-import org.web3j.protocol.Web3j
-import org.web3j.protocol.http.HttpService
 
 object WcService {
     const val PERSONAL_SIGN = "personal_sign"
@@ -76,6 +75,7 @@ object WcService {
 
     @Volatile
     var provider: Provider? = null
+
     @Volatile
     private var accountPrefs: SharedPreferences? = null
     private fun cacheAccount(topic: String, address: String) {
@@ -394,12 +394,8 @@ object WcService {
                     val (cid, hash) = saved.split(":", limit = 2)
                     val chain = chains.firstOrNull { it.chainId == cid.toLong() }
                         ?: return@launch errorTo(r.topic, r.request.id, 5710, "Chain not available")
-                    val web3 = Web3j.build(HttpService(chain.rpcUrl))
-                    val rc = try {
-                        web3.ethGetTransactionReceipt(hash).send().transactionReceipt.orElse(null)
-                    } finally {
-                        web3.shutdown()
-                    }
+                    val rc = Rpc.web3(chain.rpcUrl)
+                        .ethGetTransactionReceipt(hash).send().transactionReceipt.orElse(null)
                     val o = JSONObject().put("version", "2.0.0").put("id", id)
                         .put("chainId", "0x" + cid.toLong().toString(16)).put("atomic", true)
                     if (rc == null) {

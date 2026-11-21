@@ -4,9 +4,11 @@ import com.nzm.wallet.abi.SelectorLookup
 import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.utils.Constants.MAX_UINT
 import com.nzm.wallet.utils.Helpers.isValidAddress
+import com.nzm.wallet.utils.Helpers.shortAmount
 import org.json.JSONArray
 import org.json.JSONObject
 import org.web3j.crypto.Credentials
+import org.web3j.crypto.Keys
 import org.web3j.crypto.Sign
 import org.web3j.crypto.StructuredDataEncoder
 import org.web3j.utils.Numeric
@@ -30,6 +32,22 @@ class TypedReq(
 }
 
 class WcTx(val to: String, val value: BigInteger, val data: String)
+
+enum class CallKind { TRANSFER, APPROVE, APPROVE_ALL, TRANSFER_FROM }
+
+/**
+ * A decoded token call. [party]: recipient, spender or operator. [from]: transferFrom only.
+ * [amount]: token amount or NFT id; for APPROVE_ALL the raw approved flag.
+ */
+class KnownCall(
+    val kind: CallKind,
+    val party: String,
+    val amount: BigInteger,
+    val token: Token?,
+    val from: String? = null
+) {
+    val danger: Boolean get() = kind == CallKind.APPROVE || kind == CallKind.APPROVE_ALL
+}
 
 object WcSigner {
     private fun isHex(s: String) =
@@ -102,6 +120,43 @@ object WcSigner {
         return WcTx(to, value, data)
     }
 
+    /**
+     * The one decoder for token calls, used by every screen. Null for any other call, or for
+     * call data too short to hold the arguments.
+     */
+    fun decodeCall(to: String, data: String, tokens: List<Token>): KnownCall? {
+        val d = data.removePrefix("0x").lowercase()
+        fun word(i: Int) = d.substring(8 + i * 64, 8 + (i + 1) * 64)
+        fun addr(i: Int) = Keys.toChecksumAddress("0x" + word(i).takeLast(40))
+        fun num(i: Int) = BigInteger(word(i), 16)
+        val token = tokens.firstOrNull { it.address.equals(to, true) }
+        return try {
+            when (d.take(8)) {
+                "a9059cbb" -> KnownCall(CallKind.TRANSFER, addr(0), num(1), token)
+                "095ea7b3" -> KnownCall(CallKind.APPROVE, addr(0), num(1), token)
+                "a22cb465" -> KnownCall(CallKind.APPROVE_ALL, addr(0), num(1), token)
+                "23b872dd" -> KnownCall(
+                    CallKind.TRANSFER_FROM,
+                    addr(1),
+                    num(2),
+                    token,
+                    from = addr(0)
+                )
+
+                else -> null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** "Unlimited USDC", "1.5 USDC" or "123 raw units" when the token is not in the list. */
+    fun amountLabel(raw: BigInteger, token: Token?): String = when {
+        raw == MAX_UINT -> "Unlimited" + (token?.let { " ${it.symbol}" } ?: "")
+        token == null -> "$raw raw units"
+        else -> shortAmount(raw, token.decimals) + " ${token.symbol}"
+    }
+
     /** Plain-words description of the call data. Only the common dangerous ones are decoded. */
     fun describe(
         tx: WcTx,
@@ -109,45 +164,26 @@ object WcSigner {
         guess: SelectorLookup.Guess? = null
     ): Pair<String, Boolean> {
         if (tx.data.isEmpty()) return "Plain transfer, no contract call" to false
-        val d = tx.data.drop(2).lowercase()
-        val sel = d.take(8)
-        fun word(i: Int) = d.drop(8 + i * 64).take(64)
-        fun addr(i: Int) = "0x" + word(i).takeLast(40)
-        val token = tokens.firstOrNull { it.address.equals(tx.to, true) }
-        fun amount(w: String): String {
-            val v = BigInteger(w, 16)
-            if (v == MAX_UINT) return "UNLIMITED"
-            val dec = token?.decimals ?: return "$v (raw units)"
-            return v.toBigDecimal().movePointLeft(dec).stripTrailingZeros()
-                .toPlainString() + " ${token.symbol}"
+        val c = decodeCall(tx.to, tx.data, tokens)
+        if (c != null) {
+            val amount = amountLabel(c.amount, c.token)
+            return when (c.kind) {
+                CallKind.APPROVE -> "Approve token spending\nSpender: ${c.party}\nAmount: $amount"
+                CallKind.APPROVE_ALL -> "setApprovalForAll: gives ${c.party} control of ALL your tokens in this collection"
+                CallKind.TRANSFER -> "Token transfer\nTo: ${c.party}\nAmount: $amount"
+                CallKind.TRANSFER_FROM -> "transferFrom\nFrom: ${c.from}\nTo: ${c.party}\nAmount/ID: $amount"
+            } to c.danger
         }
-        return try {
-            when (sel) {
-                "095ea7b3" if d.length >= 8 + 128 ->
-                    "Approve token spending\nSpender: ${addr(0)}\nAmount: ${amount(word(1))}" to true
-
-                "a22cb465" if d.length >= 8 + 128 ->
-                    "setApprovalForAll: gives ${addr(0)} control of ALL your tokens in this collection" to true
-
-                "a9059cbb" if d.length >= 8 + 128 ->
-                    "Token transfer\nTo: ${addr(0)}\nAmount: ${amount(word(1))}" to false
-
-                "23b872dd" if d.length >= 8 + 192 ->
-                    "transferFrom\nFrom: ${addr(0)}\nTo: ${addr(1)}\nAmount/ID: ${amount(word(2))}" to false
-
-                else -> if (guess != null) {
-                    buildString {
-                        append("Call ${guess.signature.substringBefore('(')}()")
-                        append("\nName from a public database, unverified")
-                        guess.args?.take(8)?.forEach { (t, v) -> append("\n$t: $v") }
-                        guess.risks.forEach { append("\nWARNING: $it") }
-                    } to guess.risks.isNotEmpty()
-                } else {
-                    "Contract call, function $sel (${d.length / 2 - 4} bytes of arguments). Not decoded." to false
-                }
-            }
-        } catch (_: Exception) {
-            "Contract call, function $sel. Not decoded." to false
+        val sel = tx.data.drop(2).take(8).lowercase()
+        return if (guess != null) {
+            buildString {
+                append("Call ${guess.signature.substringBefore('(')}()")
+                append("\nName from a public database, unverified")
+                guess.args?.take(8)?.forEach { (t, v) -> append("\n$t: $v") }
+                guess.risks.forEach { append("\nWARNING: $it") }
+            } to guess.risks.isNotEmpty()
+        } else {
+            "Contract call, function $sel (${tx.data.length / 2 - 5} bytes of arguments). Not decoded." to false
         }
     }
 

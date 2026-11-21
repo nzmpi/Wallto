@@ -38,6 +38,7 @@ import com.nzm.wallet.utils.Constants.MAX_UINT
 import com.nzm.wallet.utils.Helpers.fmt
 import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.utils.Helpers.shortAmount
+import com.nzm.wallet.wc.CallKind
 import com.nzm.wallet.wc.PersonalMsg
 import com.nzm.wallet.wc.TypedReq
 import com.nzm.wallet.wc.WcService
@@ -45,7 +46,6 @@ import com.nzm.wallet.wc.WcSigner
 import com.nzm.wallet.wc.WcTx
 import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
-import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
 import java.math.BigInteger
 
@@ -92,69 +92,31 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
             exact = fmt(tx.value, chain, chain.decimals)
         )
     }
-    val d = tx.data.drop(2).lowercase()
-    val sel = d.take(8)
-    fun word(i: Int) = d.drop(8 + i * 64).take(64)
-    fun addr(i: Int) = Keys.toChecksumAddress("0x" + word(i).takeLast(40))
-    val token = tokens.firstOrNull { it.address.equals(tx.to, true) }
-    fun amountText(w: String): Pair<String, BigInteger> {
-        val v = BigInteger(w, 16)
-        if (v == MAX_UINT) return "Unlimited" + (token?.let { " ${it.symbol}" } ?: "") to v
-        val dec = token?.decimals ?: return "$v (raw units)" to v
-        return shortAmount(v, dec) + " ${token.symbol}" to v
-    }
+    val c = WcSigner.decodeCall(tx.to, tx.data, tokens) ?: return other(tx, chain)
+    val raw = c.amount
+    val label = WcSigner.amountLabel(raw, c.token)
+    val exact = if (raw == MAX_UINT) "Unlimited"
+    else c.token?.let { fmt(raw, it, it.decimals) } ?: "$raw raw units"
+    return when (c.kind) {
+        CallKind.TRANSFER -> Summary(
+            "Sending", label, c.token, false, raw, c.party, "To",
+            danger = false, plain = false, isTransfer = true, exact = exact
+        )
 
-    fun exactOf(v: BigInteger): String =
-        if (v == MAX_UINT) "Unlimited"
-        else token?.let { fmt(v, it, it.decimals) }
-            ?: "$v (raw units)"
-    return try {
-        when (sel) {
-            "a9059cbb" if d.length >= 8 + 128 -> {
-                val (t, raw) = amountText(word(1))
-                Summary(
-                    "Sending", t, token, false, raw, addr(0), "To",
-                    danger = false,
-                    plain = false,
-                    isTransfer = true,
-                    exact = exactOf(raw)
-                )
-            }
+        CallKind.APPROVE -> Summary(
+            "Approving", label, null, false, null, c.party, "Spender",
+            danger = true, plain = false, isTransfer = false, exact = exact
+        )
 
-            "095ea7b3" if d.length >= 8 + 128 -> {
-                val (t, raw) = amountText(word(1))
-                Summary(
-                    "Approving", t, null, false, null, addr(0), "Spender",
-                    danger = true,
-                    plain = false,
-                    isTransfer = false,
-                    exact = exactOf(raw)
-                )
-            }
+        CallKind.APPROVE_ALL -> Summary(
+            "Approving all tokens", null, null, false, null, c.party, "Operator",
+            danger = true, plain = false, isTransfer = false
+        )
 
-            "a22cb465" if d.length >= 8 + 128 ->
-                Summary(
-                    "Approving all tokens", null, null, false, null, addr(0), "Operator",
-                    danger = true,
-                    plain = false,
-                    isTransfer = false
-                )
-
-            "23b872dd" if d.length >= 8 + 192 -> {
-                val (t, raw) = amountText(word(2))
-                Summary(
-                    "Transfer from ${addr(0)}", t, token, false, raw, addr(1), "To",
-                    danger = false,
-                    plain = false,
-                    isTransfer = false,
-                    exact = exactOf(raw)
-                )
-            }
-
-            else -> other(tx, chain)
-        }
-    } catch (_: Exception) {
-        other(tx, chain)
+        CallKind.TRANSFER_FROM -> Summary(
+            "Transfer from ${c.from}", label, c.token, false, raw, c.party, "To",
+            danger = false, plain = false, isTransfer = false, exact = exact
+        )
     }
 }
 
