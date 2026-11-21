@@ -97,7 +97,8 @@ object Delegation {
             fields.add(RlpString.create(BigInteger(1, sig.s)))
             val raw = byteArrayOf(0x04) + RlpEncoder.encode(RlpList(fields))
 
-            val res = Rpc.web3(plan.chain.rpcUrl).ethSendRawTransaction(Numeric.toHexString(raw)).send()
+            val res =
+                Rpc.web3(plan.chain.rpcUrl).ethSendRawTransaction(Numeric.toHexString(raw)).send()
             if (res.hasError()) throw IllegalStateException(
                 res.error.message ?: "Node rejected the transaction"
             )

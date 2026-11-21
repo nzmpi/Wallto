@@ -75,6 +75,7 @@ object WcService {
 
     @Volatile
     var provider: Provider? = null
+
     @Volatile
     private var accountPrefs: SharedPreferences? = null
     private fun cacheAccount(topic: String, address: String) {

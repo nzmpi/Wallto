@@ -52,10 +52,16 @@ class WcSignerTest {
 
     @Test
     fun txChecksSenderRecipientAndData() {
-        val ok = WcSigner.parseTx("""[{"from":"$me","to":"$other","value":"0x10","data":"0xabcd"}]""", me)
+        val ok = WcSigner.parseTx(
+            """[{"from":"$me","to":"$other","value":"0x10","data":"0xabcd"}]""",
+            me
+        )
         assertEquals(BigInteger.valueOf(16), ok.value)
         assertEquals("0xabcd", ok.data)
-        assertEquals("", WcSigner.parseTx("""[{"from":"$me","to":"$other","data":"0x"}]""", me).data)
+        assertEquals(
+            "",
+            WcSigner.parseTx("""[{"from":"$me","to":"$other","data":"0x"}]""", me).data
+        )
 
         listOf(
             """[{"from":"$other","to":"$other"}]""",           // signs for someone else
@@ -80,12 +86,20 @@ class WcSignerTest {
 
     @Test
     fun decodesTransferAndTransferFrom() {
-        val t = WcSigner.decodeCall(usdc, call("a9059cbb", word(other), word(BigInteger.valueOf(1_500_000))), tokens)!!
+        val t = WcSigner.decodeCall(
+            usdc,
+            call("a9059cbb", word(other), word(BigInteger.valueOf(1_500_000))),
+            tokens
+        )!!
         assertEquals(CallKind.TRANSFER, t.kind)
         assertFalse(t.danger)
         assertEquals("1.5 USDC", WcSigner.amountLabel(t.amount, t.token))
 
-        val f = WcSigner.decodeCall(other, call("23b872dd", word(me), word(other), word(BigInteger.TEN)), tokens)!!
+        val f = WcSigner.decodeCall(
+            other,
+            call("23b872dd", word(me), word(other), word(BigInteger.TEN)),
+            tokens
+        )!!
         assertEquals(CallKind.TRANSFER_FROM, f.kind)
         assertTrue(f.from!!.equals(me, true))
         assertTrue(f.party.equals(other, true))
@@ -102,7 +116,13 @@ class WcSignerTest {
     @Test
     fun unknownOrTruncatedIsNotDecoded() {
         assertNull(WcSigner.decodeCall(usdc, call("deadbeef", word(other)), tokens))
-        assertNull(WcSigner.decodeCall(usdc, call("095ea7b3", word(other)), tokens)) // amount missing
+        assertNull(
+            WcSigner.decodeCall(
+                usdc,
+                call("095ea7b3", word(other)),
+                tokens
+            )
+        ) // amount missing
         assertNull(WcSigner.decodeCall(usdc, "0x", tokens))
     }
 
@@ -113,7 +133,13 @@ class WcSignerTest {
         )
         assertTrue(danger)
         assertTrue(text, "Unlimited USDC" in text)
-        val (unknown, d2) = WcSigner.describe(WcTx(usdc, BigInteger.ZERO, call("deadbeef", word(other))), tokens)
+        val (unknown, d2) = WcSigner.describe(
+            WcTx(
+                usdc,
+                BigInteger.ZERO,
+                call("deadbeef", word(other))
+            ), tokens
+        )
         assertFalse(d2)
         assertTrue(unknown, "deadbeef (32 bytes of arguments)" in unknown)
     }

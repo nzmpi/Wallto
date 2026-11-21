@@ -135,7 +135,14 @@ object WcSigner {
                 "a9059cbb" -> KnownCall(CallKind.TRANSFER, addr(0), num(1), token)
                 "095ea7b3" -> KnownCall(CallKind.APPROVE, addr(0), num(1), token)
                 "a22cb465" -> KnownCall(CallKind.APPROVE_ALL, addr(0), num(1), token)
-                "23b872dd" -> KnownCall(CallKind.TRANSFER_FROM, addr(1), num(2), token, from = addr(0))
+                "23b872dd" -> KnownCall(
+                    CallKind.TRANSFER_FROM,
+                    addr(1),
+                    num(2),
+                    token,
+                    from = addr(0)
+                )
+
                 else -> null
             }
         } catch (_: Exception) {
