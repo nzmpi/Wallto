@@ -5,8 +5,6 @@ import kotlinx.coroutines.withContext
 import org.web3j.crypto.Credentials
 import org.web3j.crypto.Hash
 import org.web3j.crypto.Sign
-import org.web3j.protocol.Web3j
-import org.web3j.protocol.http.HttpService
 import org.web3j.rlp.RlpEncoder
 import org.web3j.rlp.RlpList
 import org.web3j.rlp.RlpString
@@ -99,15 +97,10 @@ object Delegation {
             fields.add(RlpString.create(BigInteger(1, sig.s)))
             val raw = byteArrayOf(0x04) + RlpEncoder.encode(RlpList(fields))
 
-            val web3 = Web3j.build(HttpService(plan.chain.rpcUrl))
-            try {
-                val res = web3.ethSendRawTransaction(Numeric.toHexString(raw)).send()
-                if (res.hasError()) throw IllegalStateException(
-                    res.error.message ?: "Node rejected the transaction"
-                )
-                res.transactionHash
-            } finally {
-                web3.shutdown()
-            }
+            val res = Rpc.web3(plan.chain.rpcUrl).ethSendRawTransaction(Numeric.toHexString(raw)).send()
+            if (res.hasError()) throw IllegalStateException(
+                res.error.message ?: "Node rejected the transaction"
+            )
+            res.transactionHash
         }
 }

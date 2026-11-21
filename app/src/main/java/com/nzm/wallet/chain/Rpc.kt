@@ -13,28 +13,25 @@ import org.web3j.protocol.http.HttpService
 import org.web3j.utils.Numeric
 import java.io.IOException
 import java.math.BigInteger
+import java.util.concurrent.ConcurrentHashMap
 
 object Rpc {
+    // shortcut: clients of removed or edited chains stay until the app restarts, fine for a handful of chains
+    private val clients = ConcurrentHashMap<String, Web3j>()
+
+    /** One shared client per RPC URL: reuses connections. Never shut it down. */
+    fun web3(rpcUrl: String): Web3j = clients.computeIfAbsent(rpcUrl) { Web3j.build(HttpService(it)) }
+
     suspend fun chainId(rpcUrl: String): Long = withContext(Dispatchers.IO) {
-        val web3 = Web3j.build(HttpService(rpcUrl))
-        try {
-            val r = web3.ethChainId().send()
-            if (r.hasError()) throw IOException(r.error.message)
-            r.chainId.longValueExact()
-        } finally {
-            web3.shutdown()
-        }
+        val r = web3(rpcUrl).ethChainId().send()
+        if (r.hasError()) throw IOException(r.error.message)
+        r.chainId.longValueExact()
     }
 
     suspend fun balance(rpcUrl: String, address: String): BigInteger = withContext(Dispatchers.IO) {
-        val web3 = Web3j.build(HttpService(rpcUrl))
-        try {
-            val r = web3.ethGetBalance(address, DefaultBlockParameterName.LATEST).send()
-            if (r.hasError()) throw IOException(r.error.message)
-            r.balance
-        } finally {
-            web3.shutdown()
-        }
+        val r = web3(rpcUrl).ethGetBalance(address, DefaultBlockParameterName.LATEST).send()
+        if (r.hasError()) throw IOException(r.error.message)
+        r.balance
     }
 
     fun describeError(e: Response.Error): String =
@@ -51,31 +48,21 @@ object Rpc {
             require((fn == null) xor (data == null)) {
                 "Provide either fn or data"
             }
-            val web3 = Web3j.build(HttpService(rpcUrl))
-            try {
-                val callData = fn?.let {
-                    FunctionEncoder.encode(it)
-                } ?: Numeric.toHexString(data!!)
-                val r = web3.ethCall(
-                    Transaction.createEthCallTransaction(from, to, callData),
-                    DefaultBlockParameterName.LATEST
-                ).send()
-                if (r.hasError()) throw IOException(describeError(r.error))
-                Numeric.hexStringToByteArray(r.value ?: "0x")
-            } finally {
-                web3.shutdown()
-            }
+            val callData = fn?.let {
+                FunctionEncoder.encode(it)
+            } ?: Numeric.toHexString(data!!)
+            val r = web3(rpcUrl).ethCall(
+                Transaction.createEthCallTransaction(from, to, callData),
+                DefaultBlockParameterName.LATEST
+            ).send()
+            if (r.hasError()) throw IOException(describeError(r.error))
+            Numeric.hexStringToByteArray(r.value ?: "0x")
         }
 
     suspend fun isContract(rpcUrl: String, address: String): Boolean =
         withContext(Dispatchers.IO) {
-            val web3 = Web3j.build(HttpService(rpcUrl))
-            try {
-                val r = web3.ethGetCode(address, DefaultBlockParameterName.LATEST).send()
-                if (r.hasError()) throw IOException(describeError(r.error))
-                r.code != null && r.code != "0x"
-            } finally {
-                web3.shutdown()
-            }
+            val r = web3(rpcUrl).ethGetCode(address, DefaultBlockParameterName.LATEST).send()
+            if (r.hasError()) throw IOException(describeError(r.error))
+            r.code != null && r.code != "0x"
         }
 }

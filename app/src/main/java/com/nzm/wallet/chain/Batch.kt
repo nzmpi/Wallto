@@ -16,9 +16,7 @@ import org.web3j.abi.datatypes.Function
 import org.web3j.abi.datatypes.generated.Bytes32
 import org.web3j.abi.datatypes.generated.Uint256
 import org.web3j.crypto.Keys
-import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameterName
-import org.web3j.protocol.http.HttpService
 import org.web3j.utils.Numeric
 import java.math.BigInteger
 
@@ -56,12 +54,8 @@ object Batch {
 
     /** Reads the delegation marker (0xef0100 + delegate) and asks the account whether it supports batch mode. */
     suspend fun status(chain: Chain, account: String): BatchStatus = withContext(Dispatchers.IO) {
-        val web3 = Web3j.build(HttpService(chain.rpcUrl))
-        val code = try {
-            web3.ethGetCode(account, DefaultBlockParameterName.LATEST).send().code ?: "0x"
-        } finally {
-            web3.shutdown()
-        }
+        val code = Rpc.web3(chain.rpcUrl)
+            .ethGetCode(account, DefaultBlockParameterName.LATEST).send().code ?: "0x"
         val delegate = if (code.startsWith("0xef0100") && code.length == 8 + 40)
             Keys.toChecksumAddress("0x" + code.substring(8)) else null
         if (delegate == null) return@withContext BatchStatus(null, false)
