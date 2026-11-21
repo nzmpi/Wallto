@@ -62,13 +62,15 @@ cd Wallto
 ./gradlew assembleDebug
 ```
 
-For real funds, build a release variant signed with your own key instead of installing the debug build. A debug build is debuggable, so anyone with USB debugging access can read the app's private files.
+For real funds, install a release build instead of the debug build. A debug build is debuggable, so anyone with USB debugging access can read the app's private files.
 
 ```
 ./gradlew assembleRelease
 ```
 
-Keep the release keystore and its passwords backed up and outside the repository. Switching from a debug-signed install to a release-signed one means uninstalling the app first. That deletes the wallets from the phone, so check that you can restore every wallet from its written phrase before you do it.
+The release build is signed with the same debug key as debug builds (`signingConfig` in `app/build.gradle.kts`), so it installs over a debug install without deleting your wallets. The catch: the debug keystore (`~/.android/debug.keystore`) has the public password `android`. Anyone who copies that file can sign an "update" that Android installs over the wallet, and that update could show the biometric prompt and decrypt your secrets. Keep that file private, or switch `signingConfig` to your own release key.
+
+If you switch to your own key, keep the keystore and its passwords backed up and outside the repository. Moving from a debug-signed install to one signed with another key means uninstalling the app first. That deletes the wallets from the phone, so check that you can restore every wallet from its written phrase before you do it.
 
 ## Configuration
 

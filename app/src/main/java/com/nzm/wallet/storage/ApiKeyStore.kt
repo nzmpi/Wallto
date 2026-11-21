@@ -12,8 +12,9 @@ import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class PriceKeyStore(context: Context) {
-    private val prefs = context.getPrefs("price_prefs")
+/** An API key (not a wallet secret) kept encrypted with a Keystore key that needs no biometrics. */
+class ApiKeyStore(context: Context, prefsName: String, private val alias: String) {
+    private val prefs = context.getPrefs(prefsName)
 
     fun get(): String? {
         val ct = prefs.getString("key_ct", null) ?: return null
@@ -46,11 +47,7 @@ class PriceKeyStore(context: Context) {
 
     private fun secretKey(): SecretKey {
         val ks = KeyStore.getInstance(PROVIDER).apply { load(null) }
-        (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
-        return generateSecretKey(ALIAS)
-    }
-
-    private companion object {
-        const val ALIAS = "price_api_key"
+        (ks.getKey(alias, null) as? SecretKey)?.let { return it }
+        return generateSecretKey(alias)
     }
 }

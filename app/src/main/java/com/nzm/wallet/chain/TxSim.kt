@@ -1,15 +1,10 @@
 package com.nzm.wallet.chain
 
 import android.content.Context
-import android.util.Base64
-import androidx.core.content.edit
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
-import com.nzm.wallet.utils.Constants.PROVIDER
-import com.nzm.wallet.utils.Constants.TRANSFORM
+import com.nzm.wallet.storage.ApiKeyStore
 import com.nzm.wallet.utils.Constants.TWO_255
-import com.nzm.wallet.utils.Helpers.generateSecretKey
-import com.nzm.wallet.utils.Helpers.getPrefs
 import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.utils.Helpers.shortAmount
 import kotlinx.coroutines.Dispatchers
@@ -21,49 +16,13 @@ import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 import kotlin.collections.iterator
 
+/** The Alchemy key. Stored by the same code as the CoinGecko key. */
 object SimKey {
-    private const val ALIAS = "sim_api_key"
-    private const val PREFS = "sim_prefs"
-    private const val NAME = "k"
-
-    private fun key(): SecretKey {
-        val ks = KeyStore.getInstance(PROVIDER).apply { load(null) }
-        (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
-        return generateSecretKey(ALIAS)
-    }
-
-    fun get(context: Context): String? {
-        val s = context.getPrefs(PREFS).getString(NAME, null)
-            ?: return null
-        return try {
-            val raw = Base64.decode(s, Base64.NO_WRAP)
-            val c = Cipher.getInstance(TRANSFORM)
-            c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw, 0, 12))
-            String(c.doFinal(raw, 12, raw.size - 12), Charsets.UTF_8)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    fun set(context: Context, value: String?) {
-        context.getPrefs(PREFS).edit {
-            val k = value?.trim()?.takeIf { it.isNotEmpty() }
-            if (k == null) {
-                remove(NAME).apply()
-                return
-            }
-            val c = Cipher.getInstance(TRANSFORM)
-            c.init(Cipher.ENCRYPT_MODE, key())
-            val ct = c.doFinal(k.toByteArray(Charsets.UTF_8))
-            putString(NAME, Base64.encodeToString(c.iv + ct, Base64.NO_WRAP))
-        }
-    }
+    private fun store(context: Context) = ApiKeyStore(context, "sim_prefs", "sim_api_key")
+    fun get(context: Context): String? = store(context).get()
+    fun set(context: Context, value: String?) = store(context).set(value)
 }
 
 class SimLine(

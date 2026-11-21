@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import java.io.File
+import java.io.FileOutputStream
 import java.security.SecureRandom
 import org.web3j.crypto.Credentials
 import com.nzm.wallet.core.WalletCore
@@ -87,7 +88,11 @@ class Vault(context: Context) {
         val iv = cipher.iv
         // layout: [version=1][type][ivLen][iv][ciphertext]
         val tmp = File(dir, "$id.tmp")
-        tmp.writeBytes(byteArrayOf(1, type.tag, iv.size.toByte()) + iv + ct)
+        // sync before rename: a crash right after saving must not leave an empty wallet file
+        FileOutputStream(tmp).use {
+            it.write(byteArrayOf(1, type.tag, iv.size.toByte()) + iv + ct)
+            it.fd.sync()
+        }
         if (!tmp.renameTo(file)) { tmp.delete(); error("Could not save wallet") }
     }
 
