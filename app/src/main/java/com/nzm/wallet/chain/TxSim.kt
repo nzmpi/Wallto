@@ -165,8 +165,10 @@ object TxSim {
                 j.getJSONArray("result").getJSONObject(0).getJSONArray("calls").getJSONObject(0)
             val gas = res.optString("gasUsed", "").takeIf { it.startsWith("0x") }?.let { num(it) }
             if (res.optString("status", "0x1") == "0x0") {
-                val msg = res.optJSONObject("error")?.optString("message")?.sanitize(200)?.ifBlank { null }
-                val why = AbiCodec.decodeRevert(res.optString("returnData", "")) ?: msg ?: "execution reverted"
+                val msg = res.optJSONObject("error")?.optString("message")?.sanitize(200)
+                    ?.ifBlank { null }
+                val why = AbiCodec.decodeRevert(res.optString("returnData", "")) ?: msg
+                ?: "execution reverted"
                 return@withContext SimResult(
                     "Would fail: $why",
                     gas,

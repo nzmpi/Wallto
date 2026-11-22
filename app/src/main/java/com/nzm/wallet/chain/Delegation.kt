@@ -45,7 +45,7 @@ object Delegation {
             if (res.hasError()) throw IllegalStateException(
                 res.error.message ?: "Node rejected the transaction"
             )
-            val hash = Numeric.toHexString(Hash.sha3(raw)) // ours, not the node's answer
+            val hash = Numeric.toHexString(Hash.sha3(raw))
             runCatching { SendTx.onBroadcast?.invoke(plan, hash) } // history must never break a tx
             hash
         }

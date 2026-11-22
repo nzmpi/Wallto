@@ -171,8 +171,10 @@ class WcSignerTest {
     private val chains = listOf(com.nzm.wallet.dbs.Chain(1, "Ethereum", "https://x", "ETH"))
     private fun calls(callsJson: String, extra: String = "") =
         """[{"version":"2.0.0","chainId":"0x1","from":"$me","calls":$callsJson$extra}]"""
+
     private fun parse(params: String, taken: Set<String> = emptySet()) =
         WcSigner.parseCalls(params, me, chains, { tokens }, { it in taken })
+
     private fun refusedCode(params: String, taken: Set<String> = emptySet()): Int =
         assertThrows(WcSigner.Refused::class.java) { parse(params, taken) }.code
 
@@ -189,10 +191,27 @@ class WcSignerTest {
         val many = (1..21).joinToString(",", "[", "]") { """{"to":"$other"}""" }
         assertEquals(5700, refusedCode(calls(many)))
         assertEquals(5700, refusedCode(calls("[]")))
-        assertEquals(5720, refusedCode(calls("""[{"to":"$other"}]""", ""","id":"a1""""), setOf("a1")))
-        assertEquals(5700, refusedCode(calls("""[{"to":"$other"}]""", ""","capabilities":{"paymasterService":{}}""")))
-        assertEquals(4100, refusedCode("""[{"chainId":"0x1","from":"$other","calls":[{"to":"$usdc"}]}]"""))
+        assertEquals(
+            5720,
+            refusedCode(calls("""[{"to":"$other"}]""", ""","id":"a1""""), setOf("a1"))
+        )
+        assertEquals(
+            5700,
+            refusedCode(
+                calls(
+                    """[{"to":"$other"}]""",
+                    ""","capabilities":{"paymasterService":{}}"""
+                )
+            )
+        )
+        assertEquals(
+            4100,
+            refusedCode("""[{"chainId":"0x1","from":"$other","calls":[{"to":"$usdc"}]}]""")
+        )
         // 2^64 + 1 must not wrap around to chain 1
-        assertEquals(-32602, refusedCode("""[{"chainId":"0x10000000000000001","calls":[{"to":"$other"}]}]"""))
+        assertEquals(
+            -32602,
+            refusedCode("""[{"chainId":"0x10000000000000001","calls":[{"to":"$other"}]}]""")
+        )
     }
 }
