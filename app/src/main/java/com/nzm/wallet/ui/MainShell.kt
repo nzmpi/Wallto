@@ -122,6 +122,7 @@ fun MainShell(
                     is ScanResult.Address -> sendReq = SendRequest(null, r.value)
                     is ScanResult.Unsupported ->
                         Toast.makeText(activity, r.why, Toast.LENGTH_LONG).show()
+
                     ScanResult.Unknown ->
                         Toast.makeText(
                             activity,

@@ -154,7 +154,6 @@ object SendTx {
 
             val r = Rpc.web3(c.rpcUrl).ethSendRawTransaction(hex).send()
             if (r.hasError()) throw IOException(r.error.message)
-            // our own hash, not the node's answer: a bad RPC cannot point history at another tx
             val hash = Numeric.toHexString(Hash.sha3(signed))
             try {
                 onBroadcast?.invoke(plan, hash)

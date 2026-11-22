@@ -141,7 +141,12 @@ object WcSigner {
         "Calls to your own account are refused: they can run hidden calls or change the account's settings"
 
     /** A wallet_sendCalls request that can be signed. [id] is blank when the site sent none. */
-    class BatchReq(val version: String, val id: String, val chain: Chain, val items: List<BatchItem>)
+    class BatchReq(
+        val version: String,
+        val id: String,
+        val chain: Chain,
+        val items: List<BatchItem>
+    )
 
     /** A refusal with the EIP-5792 / JSON-RPC error code to send back to the site. */
     class Refused(message: String, val code: Int) : IllegalArgumentException(message)
@@ -173,11 +178,17 @@ object WcSigner {
             ?: throw Refused("Chain $cid is not saved in this wallet. Add it first.", 5710)
         val from = o.optString("from", "")
         if (from.isNotBlank() && !from.equals(signer, true))
-            throw Refused("The site asked for a different account than the one it connected with.", 4100)
+            throw Refused(
+                "The site asked for a different account than the one it connected with.",
+                4100
+            )
         o.optJSONObject("capabilities")?.let { caps ->
             for (k in caps.keys()) {
                 val optional = caps.optJSONObject(k)?.optBoolean("optional", false) == true
-                if (!optional) throw Refused("The site needs a feature this wallet does not support: $k", 5700)
+                if (!optional) throw Refused(
+                    "The site needs a feature this wallet does not support: $k",
+                    5700
+                )
             }
         }
         val calls = o.getJSONArray("calls")
@@ -187,7 +198,10 @@ object WcSigner {
         val items = (0 until calls.length()).map { i ->
             val c = calls.getJSONObject(i)
             val toRaw = c.optString("to", "")
-            if (!isValidAddress(toRaw)) throw Refused("Call ${i + 1} has an invalid address", -32602)
+            if (!isValidAddress(toRaw)) throw Refused(
+                "Call ${i + 1} has an invalid address",
+                -32602
+            )
             val to = Keys.toChecksumAddress(toRaw)
             if (to.equals(signer, true)) throw Refused("Call ${i + 1}: $SELF_CALL", -32602)
             val value = hexBig(c.optString("value", "0x0"))
