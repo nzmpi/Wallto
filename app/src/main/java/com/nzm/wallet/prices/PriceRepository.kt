@@ -11,7 +11,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import androidx.core.content.edit
-import com.nzm.wallet.storage.PriceKeyStore
+import com.nzm.wallet.storage.ApiKeyStore
 import com.nzm.wallet.utils.Helpers.getPrefs
 
 data class PriceSnapshot(val at: Long, val native: Double?, val tokens: Map<String, Double>) {
@@ -26,7 +26,7 @@ data class PriceSnapshot(val at: Long, val native: Double?, val tokens: Map<Stri
 
 class PriceRepository(context: Context) {
     private val prefs = context.getPrefs("price_prefs")
-    val keyStore = PriceKeyStore(context)
+    val keyStore = ApiKeyStore(context, "price_prefs", "price_api_key")
 
     fun snapshot(chainId: Long): PriceSnapshot {
         val raw = prefs.getString("snap_$chainId", null) ?: return PriceSnapshot.EMPTY

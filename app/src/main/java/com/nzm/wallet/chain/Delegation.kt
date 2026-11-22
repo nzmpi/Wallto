@@ -39,69 +39,75 @@ object Delegation {
      */
     suspend fun signAndSend(plan: TxPlan, delegate: String, creds: Credentials): String =
         withContext(Dispatchers.IO) {
-            val fee = plan.fee as? Fee.Eip1559
-                ?: throw IllegalStateException("This chain uses legacy fees, so it cannot send a 7702 transaction")
-            val chainId = BigInteger.valueOf(plan.chain.chainId)
-            require(chainId.signum() > 0) { "Invalid chain" }
-            require(
-                plan.from.equals(
-                    creds.address,
-                    ignoreCase = true
-                )
-            ) { "Wallet key does not match the account" }
-            require(
-                plan.to.equals(
-                    plan.from,
-                    ignoreCase = true
-                ) && plan.value.signum() == 0
-            ) { "Unexpected transaction" }
-
-            val delegateBytes = Numeric.hexStringToByteArray(delegate)
-            require(delegateBytes.size == 20) { "Invalid delegate address" }
-            val authNonce = plan.nonce + BigInteger.ONE
-
-            // authorization: sign keccak(0x05 || rlp([chain_id, address, nonce])). Always this chain, never 0.
-            val authBody = RlpList(
-                RlpString.create(chainId),
-                RlpString.create(delegateBytes),
-                RlpString.create(authNonce)
-            )
-            val authHash = Hash.sha3(byteArrayOf(0x05) + RlpEncoder.encode(authBody))
-            val authSig = Sign.signMessage(authHash, creds.ecKeyPair, false)
-            val authTuple = RlpList(
-                RlpString.create(chainId),
-                RlpString.create(delegateBytes),
-                RlpString.create(authNonce),
-                RlpString.create(yParity(authSig)),
-                RlpString.create(BigInteger(1, authSig.r)),
-                RlpString.create(BigInteger(1, authSig.s))
-            )
-
-            // transaction: type 4
-            val fields = mutableListOf<RlpType>(
-                RlpString.create(chainId),
-                RlpString.create(plan.nonce),
-                RlpString.create(fee.maxPriorityFeePerGas),
-                RlpString.create(fee.maxFeePerGas),
-                RlpString.create(plan.gasLimit),
-                RlpString.create(Numeric.hexStringToByteArray(plan.to)),
-                RlpString.create(BigInteger.ZERO),
-                RlpString.create(ByteArray(0)),
-                RlpList(),             // access list
-                RlpList(authTuple)     // authorization list
-            )
-            val txHash = Hash.sha3(byteArrayOf(0x04) + RlpEncoder.encode(RlpList(fields)))
-            val sig = Sign.signMessage(txHash, creds.ecKeyPair, false)
-            fields.add(RlpString.create(yParity(sig)))
-            fields.add(RlpString.create(BigInteger(1, sig.r)))
-            fields.add(RlpString.create(BigInteger(1, sig.s)))
-            val raw = byteArrayOf(0x04) + RlpEncoder.encode(RlpList(fields))
-
+            val raw = encode(plan, delegate, creds)
             val res =
                 Rpc.web3(plan.chain.rpcUrl).ethSendRawTransaction(Numeric.toHexString(raw)).send()
             if (res.hasError()) throw IllegalStateException(
                 res.error.message ?: "Node rejected the transaction"
             )
-            res.transactionHash
+            val hash = res.transactionHash
+            runCatching { SendTx.onBroadcast?.invoke(plan, hash) } // history must never break a tx
+            hash
         }
+
+    /** The signed type-4 transaction bytes. No network: kept apart so tests can decode it. */
+    internal fun encode(plan: TxPlan, delegate: String, creds: Credentials): ByteArray {
+        val fee = plan.fee as? Fee.Eip1559
+            ?: throw IllegalStateException("This chain uses legacy fees, so it cannot send a 7702 transaction")
+        val chainId = BigInteger.valueOf(plan.chain.chainId)
+        require(chainId.signum() > 0) { "Invalid chain" }
+        require(
+            plan.from.equals(
+                creds.address,
+                ignoreCase = true
+            )
+        ) { "Wallet key does not match the account" }
+        require(
+            plan.to.equals(
+                plan.from,
+                ignoreCase = true
+            ) && plan.value.signum() == 0
+        ) { "Unexpected transaction" }
+
+        val delegateBytes = Numeric.hexStringToByteArray(delegate)
+        require(delegateBytes.size == 20) { "Invalid delegate address" }
+        val authNonce = plan.nonce + BigInteger.ONE
+
+        // authorization: sign keccak(0x05 || rlp([chain_id, address, nonce])). Always this chain, never 0.
+        val authBody = RlpList(
+            RlpString.create(chainId),
+            RlpString.create(delegateBytes),
+            RlpString.create(authNonce)
+        )
+        val authHash = Hash.sha3(byteArrayOf(0x05) + RlpEncoder.encode(authBody))
+        val authSig = Sign.signMessage(authHash, creds.ecKeyPair, false)
+        val authTuple = RlpList(
+            RlpString.create(chainId),
+            RlpString.create(delegateBytes),
+            RlpString.create(authNonce),
+            RlpString.create(yParity(authSig)),
+            RlpString.create(BigInteger(1, authSig.r)),
+            RlpString.create(BigInteger(1, authSig.s))
+        )
+
+        // transaction: type 4
+        val fields = mutableListOf<RlpType>(
+            RlpString.create(chainId),
+            RlpString.create(plan.nonce),
+            RlpString.create(fee.maxPriorityFeePerGas),
+            RlpString.create(fee.maxFeePerGas),
+            RlpString.create(plan.gasLimit),
+            RlpString.create(Numeric.hexStringToByteArray(plan.to)),
+            RlpString.create(BigInteger.ZERO),
+            RlpString.create(ByteArray(0)),
+            RlpList(),             // access list
+            RlpList(authTuple)     // authorization list
+        )
+        val txHash = Hash.sha3(byteArrayOf(0x04) + RlpEncoder.encode(RlpList(fields)))
+        val sig = Sign.signMessage(txHash, creds.ecKeyPair, false)
+        fields.add(RlpString.create(yParity(sig)))
+        fields.add(RlpString.create(BigInteger(1, sig.r)))
+        fields.add(RlpString.create(BigInteger(1, sig.s)))
+        return byteArrayOf(0x04) + RlpEncoder.encode(RlpList(fields))
+    }
 }

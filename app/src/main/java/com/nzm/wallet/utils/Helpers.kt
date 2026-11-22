@@ -68,8 +68,12 @@ object Helpers {
             .toPlainString()
 
     fun parseAmount(text: String, decimals: Int): BigInteger {
-        val d = text.trim().replace(',', '.').toBigDecimalOrNull()
-            ?: throw IllegalArgumentException("Invalid amount")
+        val t = text.trim()
+        // "1,000" is one thousand to some people and one to others: refuse instead of guessing
+        require(!AMBIGUOUS.containsMatchIn(t)) { "Is that a thousands separator? Type the amount without it, like 1000 or 1.5" }
+        // plain digits only: no "1e3", "+5" or grouping that BigDecimal would accept
+        require(AMOUNT.matches(t)) { "Invalid amount" }
+        val d = t.replace(',', '.').toBigDecimal()
         require(d.signum() > 0) { "Amount must be above 0" }
         return try {
             d.movePointRight(decimals).toBigIntegerExact()
@@ -77,6 +81,9 @@ object Helpers {
             throw IllegalArgumentException("Too many decimals (max $decimals)")
         }
     }
+
+    private val AMBIGUOUS = Regex(",\\d{3}$")
+    private val AMOUNT = Regex("\\d+([.,]\\d*)?|[.,]\\d+")
 
     private const val MAX_DIGITS = 9
 

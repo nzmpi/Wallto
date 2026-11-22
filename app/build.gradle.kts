@@ -29,8 +29,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // personal use only: same key as debug builds, so release installs over debug without uninstall
-            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
