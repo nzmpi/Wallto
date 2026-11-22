@@ -9,10 +9,15 @@ import java.security.SecureRandom
 import org.web3j.crypto.Credentials
 import com.nzm.wallet.core.WalletCore
 import com.nzm.wallet.utils.Helpers.getPrefs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 enum class SecretType(val tag: Byte) {
     MNEMONIC(1), PRIVATE_KEY(2);
-    companion object { fun of(tag: Byte) = entries.first { it.tag == tag } }
+
+    companion object {
+        fun of(tag: Byte) = entries.first { it.tag == tag }
+    }
 }
 
 /**
@@ -52,7 +57,8 @@ class Vault(context: Context) {
 
     /** Wallet used by every call that has no explicit id. Falls back to the first wallet. */
     var activeId: String?
-        get() = prefs.getString(ACTIVE_KEY, null)?.takeIf { it.matches(ID_RE) && fileOf(it).exists() }
+        get() = prefs.getString(ACTIVE_KEY, null)
+            ?.takeIf { it.matches(ID_RE) && fileOf(it).exists() }
             ?: ids().firstOrNull()
         set(v) {
             require(v == null || exists(v)) { "No such wallet" }
@@ -62,7 +68,11 @@ class Vault(context: Context) {
     private fun requireActive(): String = activeId ?: error("No wallet")
 
     /** One biometric prompt. Credentials live only inside block. Secret bytes wiped after. */
-    suspend fun <T> withCredentials(activity: FragmentActivity, id: String, block: suspend (Credentials) -> T): T {
+    suspend fun <T> withCredentials(
+        activity: FragmentActivity,
+        id: String,
+        block: suspend (Credentials) -> T
+    ): T {
         val (type, bytes) = load(activity, id)
         try {
             val creds = when (type) {
@@ -76,7 +86,10 @@ class Vault(context: Context) {
     }
 
     /** Active wallet. */
-    suspend fun <T> withCredentials(activity: FragmentActivity, block: suspend (Credentials) -> T): T =
+    suspend fun <T> withCredentials(
+        activity: FragmentActivity,
+        block: suspend (Credentials) -> T
+    ): T =
         withCredentials(activity, requireActive(), block)
 
     /** secret = UTF-8 bytes of mnemonic, or hex private key. Caller wipes it after. */
@@ -89,11 +102,15 @@ class Vault(context: Context) {
         // layout: [version=1][type][ivLen][iv][ciphertext]
         val tmp = File(dir, "$id.tmp")
         // sync before rename: a crash right after saving must not leave an empty wallet file
-        FileOutputStream(tmp).use {
-            it.write(byteArrayOf(1, type.tag, iv.size.toByte()) + iv + ct)
-            it.fd.sync()
+        withContext(Dispatchers.IO) {
+            FileOutputStream(tmp).use {
+                it.write(byteArrayOf(1, type.tag, iv.size.toByte()) + iv + ct)
+                it.fd.sync()
+            }
         }
-        if (!tmp.renameTo(file)) { tmp.delete(); error("Could not save wallet") }
+        if (!tmp.renameTo(file)) {
+            tmp.delete(); error("Could not save wallet")
+        }
     }
 
     /** New wallet: creates id, saves, makes it active, returns id. */
@@ -112,13 +129,15 @@ class Vault(context: Context) {
         val ivLen = blob[2].toInt()
         val iv = blob.copyOfRange(3, 3 + ivLen)
         val ct = blob.copyOfRange(3 + ivLen, blob.size)
-        val cipher = WalletCore.authenticate(activity, KeystoreVault.decryptCipher(iv), "Unlock wallet")
+        val cipher =
+            WalletCore.authenticate(activity, KeystoreVault.decryptCipher(iv), "Unlock wallet")
         cipher.updateAAD(byteArrayOf(type.tag))
         return type to cipher.doFinal(ct)
     }
 
     /** Active wallet. */
-    suspend fun load(activity: FragmentActivity): Pair<SecretType, ByteArray> = load(activity, requireActive())
+    suspend fun load(activity: FragmentActivity): Pair<SecretType, ByteArray> =
+        load(activity, requireActive())
 
     /** Delete one wallet. Last one gone: Keystore key goes too. Caller must biometric-confirm first. */
     fun delete(id: String) {

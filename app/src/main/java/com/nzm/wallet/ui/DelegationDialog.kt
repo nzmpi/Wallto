@@ -119,14 +119,21 @@ fun DelegationDialog(
                                 vm.annotateNext(
                                     null,
                                     if (revoke) "Revoke delegation"
-                                    else "Delegate to ${Delegation.knownName(tgt) ?: shortAddress(tgt)}"
+                                    else "Delegate to ${
+                                        Delegation.knownName(tgt) ?: shortAddress(
+                                            tgt
+                                        )
+                                    }"
                                 )
                                 try {
                                     hash = vault.withCredentials(activity) { creds ->
                                         Delegation.signAndSend(p, tgt, creds)
                                     }
                                 } finally {
-                                    vm.annotateNext(null, null) // a canceled prompt must not label the next tx
+                                    vm.annotateNext(
+                                        null,
+                                        null
+                                    ) // a canceled prompt must not label the next tx
                                 }
                             }
                         },
