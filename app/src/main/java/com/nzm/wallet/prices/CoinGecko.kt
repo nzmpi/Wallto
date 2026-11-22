@@ -1,6 +1,7 @@
 package com.nzm.wallet.prices
 
 import android.net.Uri
+import com.nzm.wallet.utils.Helpers.readCapped
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -23,7 +24,8 @@ object CoinGecko {
             conn.setRequestProperty("x-cg-demo-api-key", key)
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val body = stream?.readCapped(2_000_000)?.toString(Charsets.UTF_8)
+                ?: if (stream == null) "" else throw IOException("CoinGecko response too large")
             if (code !in 200..299) throw IOException(describe(code))
             body
         } finally {

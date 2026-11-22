@@ -99,6 +99,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
     var input by remember { mutableStateOf("") }
     var revealed by remember { mutableStateOf<Pair<SecretType, String>?>(null) }
     var confirmWipe by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
     var autoTried by rememberSaveable { mutableStateOf(false) }
     var unlockTick by remember { mutableIntStateOf(0) }
 
@@ -262,14 +263,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
             onCancel = null
         )
 
-        keyLost -> KeyLostScreen {
-            vault.delete()
-            hasWallet = false
-            keyLost = false
-            vm.clearSession()
-            scope.launch { vm.wipeWallets() }
-            status = null
-        }
+        keyLost -> KeyLostScreen { confirmReset = true }
 
         addr != null && phrase != null -> BackupScreen(phrase) { backup = null }
         addr == null -> LockedScreen(status) { launchSafe { unlock() } }
@@ -324,6 +318,24 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                 onDismiss = { vm.deleteWalletRequest = null }
             )
         }
+    }
+
+    if (confirmReset) {
+        ConfirmDialog(
+            title = "Reset all wallets?",
+            text = "This deletes every wallet from this device. Restore each one afterwards from its written recovery phrase or private key.",
+            confirmLabel = "Reset",
+            onConfirm = {
+                confirmReset = false
+                vault.delete()
+                hasWallet = false
+                keyLost = false
+                vm.clearSession()
+                scope.launch { vm.wipeWallets() }
+                status = null
+            },
+            onDismiss = { confirmReset = false }
+        )
     }
 
     if (confirmWipe) {

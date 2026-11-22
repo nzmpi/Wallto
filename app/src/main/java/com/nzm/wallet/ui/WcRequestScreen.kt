@@ -38,6 +38,7 @@ import com.nzm.wallet.utils.Constants.MAX_UINT
 import com.nzm.wallet.utils.Helpers.fmt
 import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.utils.Helpers.shortAmount
+import com.nzm.wallet.utils.Helpers.stripFormat
 import com.nzm.wallet.wc.CallKind
 import com.nzm.wallet.wc.PersonalMsg
 import com.nzm.wallet.wc.TypedReq
@@ -500,7 +501,7 @@ fun WcRequestScreen(
                                         color = Dim.Mid,
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
-                                    TxMono(parsed.t.json)
+                                    TxMono(parsed.t.json.stripFormat())
                                 }
                             }
                         }

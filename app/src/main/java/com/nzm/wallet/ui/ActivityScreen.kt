@@ -2,7 +2,6 @@ package com.nzm.wallet.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Intent
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,7 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.abi.SelectorLookup
 import com.nzm.wallet.dbs.TxRecord
@@ -198,14 +196,7 @@ private fun ActivityDetail(
                     .setPrimaryClip(ClipData.newPlainText("hash", r.hash))
             }, Modifier.weight(1f))
             if (chain?.explorerUrl != null) {
-                PrimaryButton("Explorer", {
-                    activity.startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            "${chain.explorerUrl}/tx/${r.hash}".toUri()
-                        )
-                    )
-                }, Modifier.weight(1f))
+                PrimaryButton("Explorer", { openTx(activity, chain, r.hash) }, Modifier.weight(1f))
             } else {
                 PrimaryButton("Close", onClose, Modifier.weight(1f))
             }

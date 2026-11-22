@@ -70,7 +70,6 @@ object WcService {
 
         /** Address of the ACTIVE wallet, null while locked. */
         fun address(): String?
-        fun switchTo(chain: Chain)
     }
 
     @Volatile
@@ -283,8 +282,7 @@ object WcService {
         val id = r.request.id
         val topic = r.topic
         val p = provider
-        val active = p?.address()
-        if (p == null || active == null) {
+        if (p == null || p.address() == null) {
             errorTo(topic, id, 4900, "Wallet unavailable"); return
         }
         // the wallet this site connected with, not necessarily the active one
@@ -305,8 +303,8 @@ object WcService {
         }
 
         val finish = {
-            // the app's chain only follows sites of the wallet you are looking at
-            if (address.equals(active, ignoreCase = true)) p.switchTo(chain)
+            // the app's network stays yours: each site request names its own chain, and a switch
+            // under an open Send or Batch screen would send calls built for one chain on another
             send(topic, Wallet.Model.JsonRpcResponse.JsonRpcResult(id = id, result = "null"))
             WalletKit.emitSessionEvent(
                 Wallet.Params.SessionEmit(

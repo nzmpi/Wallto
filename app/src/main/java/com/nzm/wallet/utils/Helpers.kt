@@ -26,8 +26,10 @@ import javax.crypto.SecretKey
 object Helpers {
     /** Strips control and bidi/format chars: untrusted text cannot spoof the UI. */
     fun String.sanitize(max: Int = 2000): String =
-        filter { !it.isISOControl() && Character.getType(it) != Character.FORMAT.toInt() }
-            .trim().take(max)
+        stripFormat().filter { !it.isISOControl() }.trim().take(max)
+
+    /** Strips bidi/format chars only, keeping line breaks: for multi-line text like JSON. */
+    fun String.stripFormat(): String = filter { Character.getType(it) != Character.FORMAT.toInt() }
 
     fun ByteArray.toUtf8StringOrNull(): String? =
         try {

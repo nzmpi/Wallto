@@ -2,6 +2,8 @@ package com.nzm.wallet.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +49,7 @@ import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.utils.Constants.MAX_UINT
 import com.nzm.wallet.utils.Constants.SHAPE
+import com.nzm.wallet.utils.Constants.ZERO
 import com.nzm.wallet.utils.Helpers.fmt
 import com.nzm.wallet.utils.Helpers.isValidAddress
 import com.nzm.wallet.utils.Helpers.parseAmount
@@ -358,6 +361,7 @@ private fun AddCallDialog(
         when (kind) {
             Kind.Send -> {
                 val dest = addr(to, "recipient")
+                require(!dest.equals(ZERO, true)) { "Recipient is the zero address" }
                 val units = parseAmount(amount, chain.decimals)
                 require(units.signum() > 0) { "Enter an amount" }
                 BatchItem(
@@ -470,8 +474,11 @@ private fun AddCallDialog(
                         fontSize = 13.sp,
                         color = Dim.Danger
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        vm.tokens.take(5).forEach { t ->
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        vm.tokens.forEach { t ->
                             Box(
                                 Modifier
                                     .height(30.dp)
@@ -501,7 +508,7 @@ private fun AddCallDialog(
                 if (kind == Kind.Send || kind == Kind.Token || (kind == Kind.Approve && !unlimited)) {
                     OutlinedTextField(
                         amount,
-                        { amount = it.replace(',', '.') },
+                        { amount = it },
                         singleLine = true,
                         keyboardOptions = numeric,
                         shape = SHAPE,
@@ -541,7 +548,7 @@ private fun AddCallDialog(
                     )
                     OutlinedTextField(
                         value,
-                        { value = it.replace(',', '.') },
+                        { value = it },
                         singleLine = true,
                         keyboardOptions = numeric,
                         shape = SHAPE,

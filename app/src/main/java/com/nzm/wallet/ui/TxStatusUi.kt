@@ -1,6 +1,8 @@
 package com.nzm.wallet.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -55,7 +57,11 @@ internal fun TxStatusCard(result: String, hash: String) {
 
 internal fun openTx(activity: FragmentActivity, chain: Chain, hash: String) {
     val base = chain.explorerUrl ?: return
-    activity.startActivity(Intent(Intent.ACTION_VIEW, "$base/tx/$hash".toUri()))
+    try {
+        activity.startActivity(Intent(Intent.ACTION_VIEW, "$base/tx/$hash".toUri()))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(activity, "No app can open web links", Toast.LENGTH_SHORT).show()
+    }
 }
 
 @Composable

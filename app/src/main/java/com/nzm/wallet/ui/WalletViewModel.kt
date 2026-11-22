@@ -29,9 +29,9 @@ import com.nzm.wallet.prices.PriceSnapshot
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.utils.Helpers.formatUnits
 import com.nzm.wallet.utils.Helpers.getPrefs
+import com.nzm.wallet.utils.Helpers.sanitize
 import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -53,9 +53,6 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         WcService.provider = object : WcService.Provider {
             override fun chains() = chains.toList()
             override fun address() = address
-            override fun switchTo(chain: Chain) {
-                viewModelScope.launch(Dispatchers.Main) { selectChain(chain.chainId) }
-            }
         }
     }
 
@@ -371,7 +368,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Call right before signing a site's transaction so the history shows where it came from. */
     fun annotateNext(dapp: String?, note: String?) {
-        nextDapp = dapp; nextNote = note
+        nextDapp = dapp?.sanitize(80); nextNote = note
     }
 
     private fun recordTx(r: TxRecord) {

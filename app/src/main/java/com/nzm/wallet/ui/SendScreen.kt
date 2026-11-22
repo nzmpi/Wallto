@@ -662,9 +662,9 @@ fun SendScreen(
                                     BasicTextField(
                                         value = amount,
                                         onValueChange = { v ->
-                                            val c = v.replace(',', '.')
-                                            if (c.count { it == '.' } <= 1 && c.all { it.isDigit() || it == '.' }) amount =
-                                                c
+                                            // keep the comma: parseAmount reads it and refuses "1,000"
+                                            if (v.count { it == '.' || it == ',' } <= 1 && v.all { it.isDigit() || it == '.' || it == ',' }) amount =
+                                                v
                                         },
                                         singleLine = true,
                                         textStyle = TextStyle(

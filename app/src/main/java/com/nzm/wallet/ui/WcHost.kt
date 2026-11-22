@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Helpers.sanitize
 import com.nzm.wallet.wc.WcService
 
 @Composable
@@ -43,6 +44,7 @@ private fun ProposalDialog(vm: WalletViewModel, address: String, item: WcService
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var siteInfo by remember { mutableStateOf(false) }
+    val siteUrl = p.url.sanitize(200)
 
     TxPage(
         onDismiss = { },
@@ -61,23 +63,23 @@ private fun ProposalDialog(vm: WalletViewModel, address: String, item: WcService
     ) {
         PageHeader("Connect") { WcService.reject(item) }
 
-        // site: green when the domain is verified, red otherwise. Tap for the check.
+        // the site picks its own name: only the verified URL turns green. Red name: not verified.
         Column(
             Modifier
                 .clickable { siteInfo = true }
                 .padding(top = 4.dp)) {
             Text(
-                p.name.ifBlank { "Unknown site" },
+                p.name.sanitize(80).ifBlank { "Unknown site" },
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (verified) TxOk else Dim.Danger,
+                color = if (verified) Dim.Ink else Dim.Danger,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                p.url,
+                siteUrl,
                 fontSize = 14.sp,
-                color = Dim.Mid,
+                color = if (verified) TxOk else Dim.Mid,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -116,7 +118,7 @@ private fun ProposalDialog(vm: WalletViewModel, address: String, item: WcService
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(warn, color = if (blocked || !verified) Dim.Danger else TxOk)
-                    Text("Site says: ${p.url}", fontSize = 14.sp, color = Dim.Mid)
+                    Text("Site says: $siteUrl", fontSize = 14.sp, color = Dim.Mid)
                 }
             },
             confirmButton = { TextButton(onClick = { siteInfo = false }) { Text("Close") } }

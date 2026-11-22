@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.web3j.crypto.Credentials
+import org.web3j.crypto.Hash
 import org.web3j.crypto.RawTransaction
 import org.web3j.crypto.SignedRawTransaction
 import org.web3j.crypto.TransactionDecoder
@@ -153,7 +154,8 @@ object SendTx {
 
             val r = Rpc.web3(c.rpcUrl).ethSendRawTransaction(hex).send()
             if (r.hasError()) throw IOException(r.error.message)
-            val hash = r.transactionHash
+            // our own hash, not the node's answer: a bad RPC cannot point history at another tx
+            val hash = Numeric.toHexString(Hash.sha3(signed))
             try {
                 onBroadcast?.invoke(plan, hash)
             } catch (_: Exception) { /* history must never break a tx */
