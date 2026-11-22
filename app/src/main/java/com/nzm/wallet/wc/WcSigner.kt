@@ -99,10 +99,9 @@ object WcSigner {
         // a delegated account accepts signed calls over its own domain (Calibur's SignedBatchedCall):
         // the same hidden full-authority calls that SELF_CALL refuses as transactions
         require(!domain.optString("verifyingContract").trim().equals(wallet, true)) { SELF_SIGN }
-        val v = domain.opt("chainId")
-        val chainId = when {
-            v is Number -> v.toLong()
-            v is String -> if (v.startsWith("0x")) v.drop(2).toLong(16) else v.toLong()
+        val chainId = when (val v = domain.opt("chainId")) {
+            is Number -> v.toLong()
+            is String -> if (v.startsWith("0x")) v.drop(2).toLong(16) else v.toLong()
             else -> null
         }
         return TypedReq(

@@ -91,8 +91,10 @@ object TxSim {
     private const val APPROVAL =
         "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
     private const val NATIVE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-    private val TRANSFER_SINGLE = Hash.sha3String("TransferSingle(address,address,address,uint256,uint256)")
-    private val TRANSFER_BATCH = Hash.sha3String("TransferBatch(address,address,address,uint256[],uint256[])")
+    private val TRANSFER_SINGLE =
+        Hash.sha3String("TransferSingle(address,address,address,uint256,uint256)")
+    private val TRANSFER_BATCH =
+        Hash.sha3String("TransferBatch(address,address,address,uint256[],uint256[])")
     private val APPROVAL_FOR_ALL = Hash.sha3String("ApprovalForAll(address,address,bool)")
     private val UINTS = AbiType.Arr(AbiType.Uint(256))
 
@@ -148,6 +150,7 @@ object TxSim {
         val nftApprovals = mutableListOf<SimApproval>()
         fun item(sign: String, label: String, collection: String) =
             nfts.add("$sign$label (${shortAddress(Keys.toChecksumAddress(collection))})")
+
         fun moved(from: String, to: String, label: String, collection: String) {
             if (from == user) item("−", label, collection)
             if (to == user) item("+", label, collection)
@@ -160,41 +163,55 @@ object TxSim {
             val t0 = topic(0).lowercase()
             val token = l.optString("address").lowercase()
             val data = l.optString("data", "0x")
-            when {
-                t0 == TRANSFER && topics.length() == 3 -> {
+            when (t0) {
+                TRANSFER if topics.length() == 3 -> {
                     val v = num(data)
-                    if (addrOf(topic(1)) == user) deltas[token] = (deltas[token] ?: BigInteger.ZERO) - v
-                    if (addrOf(topic(2)) == user) deltas[token] = (deltas[token] ?: BigInteger.ZERO) + v
+                    if (addrOf(topic(1)) == user) deltas[token] =
+                        (deltas[token] ?: BigInteger.ZERO) - v
+                    if (addrOf(topic(2)) == user) deltas[token] =
+                        (deltas[token] ?: BigInteger.ZERO) + v
                 }
 
-                t0 == TRANSFER && topics.length() == 4 ->
+                TRANSFER if topics.length() == 4 ->
                     moved(addrOf(topic(1)), addrOf(topic(2)), "NFT #${num(topic(3))}", token)
 
-                t0 == TRANSFER_SINGLE && topics.length() == 4 -> {
+                TRANSFER_SINGLE if topics.length() == 4 -> {
                     val d = data.removePrefix("0x")
                     val id = num(d.take(64))
                     val v = num(d.drop(64).take(64))
                     moved(addrOf(topic(2)), addrOf(topic(3)), "$v × #$id", token)
                 }
 
-                t0 == TRANSFER_BATCH && topics.length() == 4 -> {
+                TRANSFER_BATCH if topics.length() == 4 -> {
                     val (ids, values) = AbiCodec.decodeOutputs(
                         listOf(UINTS, UINTS), Numeric.hexStringToByteArray(data)
                     ).map { it.removeSurrounding("[", "]").split(", ").filter(String::isNotBlank) }
                     ids.forEachIndexed { k, id ->
-                        moved(addrOf(topic(2)), addrOf(topic(3)), "${values.getOrNull(k) ?: "?"} × #$id", token)
+                        moved(
+                            addrOf(topic(2)),
+                            addrOf(topic(3)),
+                            "${values.getOrNull(k) ?: "?"} × #$id",
+                            token
+                        )
                     }
                 }
 
-                t0 == APPROVAL && topics.length() == 3 && addrOf(topic(1)) == user ->
+                APPROVAL if topics.length() == 3 && addrOf(topic(1)) == user ->
                     approvals.add(Triple(token, addrOf(topic(2)), num(data)))
 
                 // ERC-721 approve(spender, id): one item
-                t0 == APPROVAL && topics.length() == 4 && addrOf(topic(1)) == user &&
+                APPROVAL if topics.length() == 4 && addrOf(topic(1)) == user &&
                         addrOf(topic(2)) != ZERO ->
-                    nftApprovals.add(nftApproval(token, addrOf(topic(2)), "#${num(topic(3))}", false))
+                    nftApprovals.add(
+                        nftApproval(
+                            token,
+                            addrOf(topic(2)),
+                            "#${num(topic(3))}",
+                            false
+                        )
+                    )
 
-                t0 == APPROVAL_FOR_ALL && topics.length() == 3 && addrOf(topic(1)) == user &&
+                APPROVAL_FOR_ALL if topics.length() == 3 && addrOf(topic(1)) == user &&
                         num(data).signum() != 0 ->
                     nftApprovals.add(nftApproval(token, addrOf(topic(2)), "all items", true))
             }
@@ -318,6 +335,12 @@ object TxSim {
                     isUnlimited(v)
                 )
             }
-            SimResult(null, gas, lines.sortedBy { it.incoming }, read.nfts, approvals + read.nftApprovals)
+            SimResult(
+                null,
+                gas,
+                lines.sortedBy { it.incoming },
+                read.nfts,
+                approvals + read.nftApprovals
+            )
         }
 }

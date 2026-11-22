@@ -77,6 +77,7 @@ object IconStore {
     private val mem = LruCache<String, ImageBitmap>(96)
     private val failed =
         ConcurrentHashMap.newKeySet<String>()   // network errors: retry next launch
+
     // one lock per icon: two screens asking for the same logo download it once, others don't wait
     private val locks = ConcurrentHashMap<String, Mutex>()
 

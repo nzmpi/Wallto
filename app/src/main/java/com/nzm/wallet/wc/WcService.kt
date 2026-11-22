@@ -192,7 +192,7 @@ object WcService {
         val live = all.map { it.topic }.toSet()
         // requests of an ended or expired session can no longer be answered: never sign them
         _requests.update { l -> l.filter { it.request.topic in live } }
-        // cached accounts and batch ids of sessions that are gone: nobody can ask for them any more
+        // cached accounts and batch ids of sessions that are gone: nobody can ask for them anymore
         accountPrefs?.let { p ->
             val stale = p.all.keys.filter {
                 (if (it.startsWith("call:")) it.split(':')[1] else it) !in live
@@ -296,7 +296,7 @@ object WcService {
         val id = r.request.id
         val topic = r.topic
         val p = provider
-        if (p == null || p.address() == null) {
+        if (p?.address() == null) {
             errorTo(topic, id, 4900, "Wallet unavailable"); return
         }
         // the wallet this site connected with, not necessarily the active one

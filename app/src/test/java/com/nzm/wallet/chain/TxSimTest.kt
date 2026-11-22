@@ -14,9 +14,11 @@ class TxSimTest {
 
     // published event topics, typed out so a wrong signature string in TxSim fails here
     private val transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-    private val transferSingle = "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
+    private val transferSingle =
+        "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
     private val transferBatch = "0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb"
-    private val approvalForAll = "0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31"
+    private val approvalForAll =
+        "0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31"
 
     private fun w(hex: String) = hex.removePrefix("0x").padStart(64, '0')
     private fun w(n: Int) = w(n.toString(16))
@@ -33,7 +35,9 @@ class TxSimTest {
             data = "0x" + w(0x40) + w(0xa0) + w(2) + w(1) + w(2) + w(2) + w(5) + w(6)
         )
         val r = TxSim.readLogs(JSONArray().put(single).put(batch), me)
-        assertEquals(listOf("−3 × #7", "−5 × #1", "−6 × #2"), r.nfts.map { it.substringBefore(" (") })
+        assertEquals(
+            listOf("−3 × #7", "−5 × #1", "−6 × #2"),
+            r.nfts.map { it.substringBefore(" (") })
     }
 
     @Test
