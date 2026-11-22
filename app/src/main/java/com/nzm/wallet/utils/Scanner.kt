@@ -10,6 +10,7 @@ import com.nzm.wallet.utils.Helpers.isValidAddress
 sealed interface ScanResult {
     class WalletConnect(val uri: String) : ScanResult
     class Address(val value: String) : ScanResult
+    class Unsupported(val why: String) : ScanResult
     object Unknown : ScanResult
 }
 
@@ -23,16 +24,15 @@ fun parseScan(raw: String): ScanResult {
         body = body.substring("ethereum:".length).removePrefix("pay-")
     }
     val target = body.takeWhile { it != '@' && it != '/' && it != '?' }
-    val path = body.substringAfter('/', "").substringBefore('?')
-    val query = body.substringAfter('?', "")
-    val recipient =
-        if (path == "transfer") {
-            query.split('&').firstOrNull { it.startsWith("address=") }?.substringAfter('=')
-                ?: target
-        } else target
+    // Send uses the selected network and coin: a link that names a chain or a token call
+    // would silently become a different payment, so refuse it instead
+    val head = body.substringBefore('?')
+    if ('@' in head || '/' in head) return ScanResult.Unsupported(
+        "This payment link names a network or token. Paste the recipient address and choose them yourself."
+    )
 
-    return if (isValidAddress(recipient) || Ens.looksLikeName(recipient)) {
-        ScanResult.Address(recipient)
+    return if (isValidAddress(target) || Ens.looksLikeName(target)) {
+        ScanResult.Address(target)
     } else {
         ScanResult.Unknown
     }

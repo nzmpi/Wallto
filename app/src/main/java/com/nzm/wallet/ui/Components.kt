@@ -63,6 +63,7 @@ import com.nzm.wallet.dbs.WalletRow
 import com.nzm.wallet.storage.ChainIcon
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Helpers.sanitize
 import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.wc.WcService
 import kotlinx.coroutines.CancellationException
@@ -462,24 +463,26 @@ internal fun WcSiteHeader(
     otherWallet: String?
 ) {
     var info by remember { mutableStateOf(false) }
+    val siteUrl = url?.sanitize(200)
 
     Column(
         Modifier
             .clickable { info = true }
             .padding(top = 4.dp)
     ) {
+        // the site picks its own name: only the verified URL turns green
         Text(
-            name?.ifBlank { null } ?: "Unknown site",
+            name?.sanitize(80)?.ifBlank { null } ?: "Unknown site",
             fontSize = 22.sp,
             fontWeight = FontWeight.SemiBold,
-            color = if (verified) TxOk else Dim.Danger,
+            color = if (verified) Dim.Ink else Dim.Danger,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            url ?: "",
+            siteUrl ?: "",
             fontSize = 14.sp,
-            color = Dim.Mid,
+            color = if (verified) TxOk else Dim.Mid,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -499,7 +502,7 @@ internal fun WcSiteHeader(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(warn, color = if (blocked || !verified) Dim.Danger else TxOk)
-                    Text("Site says: ${url ?: "unknown"}", fontSize = 14.sp, color = Dim.Mid)
+                    Text("Site says: ${siteUrl ?: "unknown"}", fontSize = 14.sp, color = Dim.Mid)
                 }
             },
             confirmButton = { TextButton(onClick = { info = false }) { Text("Close") } }

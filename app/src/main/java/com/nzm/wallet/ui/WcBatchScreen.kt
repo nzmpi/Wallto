@@ -22,21 +22,14 @@ import com.nzm.wallet.chain.BatchItem
 import com.nzm.wallet.chain.BatchStatus
 import com.nzm.wallet.chain.SendTx
 import com.nzm.wallet.dbs.Chain
-import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
-import com.nzm.wallet.utils.Constants.MAX_UINT
 import com.nzm.wallet.utils.Helpers.fmt
-import com.nzm.wallet.utils.Helpers.isValidAddress
 import com.nzm.wallet.utils.Helpers.shortAddress
-import com.nzm.wallet.utils.Helpers.shortAmount
-import com.nzm.wallet.wc.CallKind
 import com.nzm.wallet.wc.WcService
 import com.nzm.wallet.wc.WcSigner
 import kotlinx.coroutines.CancellationException
-import org.json.JSONArray
 import org.json.JSONObject
-import org.web3j.crypto.Keys
 import org.web3j.utils.Numeric
 import java.math.BigInteger
 import java.security.SecureRandom
@@ -46,113 +39,6 @@ private sealed interface Req {
         Req
 
     class Bad(val why: String, val code: Int = 5700) : Req
-}
-
-private fun hexBig(s: String?): BigInteger {
-    val t = s?.removePrefix("0x")?.takeIf { it.isNotEmpty() } ?: return BigInteger.ZERO
-    return BigInteger(t, 16)
-}
-
-private fun decodeCall(
-    c: Chain,
-    tokens: List<Token>,
-    to: String,
-    value: BigInteger,
-    data: ByteArray
-): BatchItem {
-    if (data.isEmpty()) {
-        return BatchItem("Send ${shortAmount(value, c.decimals)} ${c.symbol}", to, value, data)
-    }
-    val k = WcSigner.decodeCall(to, Numeric.toHexString(data), tokens)
-        ?: return BatchItem(
-            "Call 0x${Numeric.toHexStringNoPrefix(data).take(8)}",
-            to,
-            value,
-            data,
-            listOf("Unknown call. Check the calldata under Advanced details."),
-            link = "on"
-        )
-    val tk = k.token
-    val amount = WcSigner.amountLabel(k.amount, tk)
-    val unlisted = "Token is not in your list: ${shortAddress(to)}"
-    return when (k.kind) {
-        CallKind.TRANSFER -> if (tk != null) BatchItem(
-            "Send $amount", to, value, data,
-            recipient = k.party, token = tk, spend = k.amount
-        ) else BatchItem(
-            "Send $amount of an unlisted token", to, value, data,
-            listOf(unlisted), recipient = k.party
-        )
-
-        CallKind.APPROVE -> BatchItem(
-            "Approve $amount", to, value, data,
-            buildList {
-                if (k.amount == MAX_UINT) add("Unlimited approval lets ${shortAddress(k.party)} spend all your tokens.")
-                if (tk == null) add(unlisted)
-            },
-            recipient = k.party, link = "for"
-        )
-
-        CallKind.APPROVE_ALL -> BatchItem(
-            "Approve all tokens of ${shortAddress(to)}", to, value, data,
-            listOf("Gives ${shortAddress(k.party)} control of all your tokens in this collection."),
-            recipient = k.party, link = "for"
-        )
-
-        CallKind.REVOKE_ALL -> BatchItem(
-            "Revoke approval for all tokens of ${shortAddress(to)}", to, value, data,
-            recipient = k.party, link = "for"
-        )
-
-        CallKind.TRANSFER_FROM -> BatchItem(
-            "Transfer $amount from ${shortAddress(k.from!!)}", to, value, data,
-            recipient = k.party
-        )
-    }
-}
-
-private fun parseRequest(item: WcService.Request, vm: WalletViewModel, signer: String): Req {
-    return try {
-        val o = JSONArray(item.request.request.params).getJSONObject(0)
-        val version = o.optString("version", "1.0")
-        val cid = hexBig(o.optString("chainId")).toLong()
-        val chain = vm.chains.firstOrNull { it.chainId == cid }
-            ?: return Req.Bad("Chain $cid is not saved in this wallet. Add it first.", 5710)
-        val from = o.optString("from", "")
-        if (from.isNotBlank() && !from.equals(signer, true))
-            return Req.Bad(
-                "The site asked for a different account than the one it connected with.",
-                4100
-            )
-        o.optJSONObject("capabilities")?.let { caps ->
-            for (k in caps.keys()) {
-                val optional = caps.optJSONObject(k)?.optBoolean("optional", false) == true
-                if (!optional) return Req.Bad(
-                    "The site needs a feature this wallet does not support: $k",
-                    5700
-                )
-            }
-        }
-        val calls = o.getJSONArray("calls")
-        if (calls.length() == 0) return Req.Bad("The batch has no calls.", 5700)
-        if (calls.length() > 20) return Req.Bad("The batch has too many calls (max 20).", 5700)
-        val tokens = if (chain.chainId == vm.selected?.chainId) vm.tokens else emptyList()
-        val items = (0 until calls.length()).map { i ->
-            val c = calls.getJSONObject(i)
-            val toRaw = c.optString("to", "")
-            require(isValidAddress(toRaw)) { "Call ${i + 1} has an invalid address" }
-            val to = Keys.toChecksumAddress(toRaw)
-            val value = hexBig(c.optString("value", "0x0"))
-            val data = Numeric.hexStringToByteArray(c.optString("data", "0x").ifBlank { "0x" })
-            decodeCall(chain, tokens, to, value, data)
-        }
-        val id = o.optString("id", "")
-        if (id.isNotBlank() && WcService.hasCall(item.request.topic, id))
-            return Req.Bad("The site reused a batch id.", 5720)
-        Req.Ok(version, id, chain, items)
-    } catch (e: Exception) {
-        Req.Bad("Could not read the request: ${e.message}", -32602)
-    }
 }
 
 @Composable
@@ -192,7 +78,18 @@ fun WcBatchScreen(
                 4100
             )
 
-            else -> parseRequest(item, vm, signerNow)
+            else -> try {
+                val r = WcSigner.parseCalls(
+                    req.request.params, signerNow, vm.chains,
+                    tokensFor = { if (it == vm.selected?.chainId) vm.tokens else emptyList() },
+                    idTaken = { WcService.hasCall(req.topic, it) }
+                )
+                Req.Ok(r.version, r.id, r.chain, r.items)
+            } catch (e: WcSigner.Refused) {
+                Req.Bad(e.message ?: "Refused", e.code)
+            } catch (e: Exception) {
+                Req.Bad("Could not read the request: ${e.message}", -32602)
+            }
         }
     }
 

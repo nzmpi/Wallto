@@ -150,4 +150,49 @@ class WcSignerTest {
         assertFalse(d2)
         assertTrue(unknown, "deadbeef (32 bytes of arguments)" in unknown)
     }
+
+    // ---- audit round 3 ----
+
+    @Test
+    fun txRefusesCallToOwnAccountButAllowsPlainSelfTransfer() {
+        assertThrows(IllegalArgumentException::class.java) {
+            WcSigner.parseTx("""[{"from":"$me","to":"$me","data":"0xe9ae5c53"}]""", me)
+        }
+        assertEquals("", WcSigner.parseTx("""[{"from":"$me","to":"$me","value":"0x1"}]""", me).data)
+    }
+
+    @Test
+    fun personalWithBidiOverrideIsShownAsHex() {
+        val m = WcSigner.parsePersonal("""["Sign in to \u202Egro.live", "$me"]""", me)
+        assertFalse(m.isText)
+        assertTrue(m.text.startsWith("0x"))
+    }
+
+    private val chains = listOf(com.nzm.wallet.dbs.Chain(1, "Ethereum", "https://x", "ETH"))
+    private fun calls(callsJson: String, extra: String = "") =
+        """[{"version":"2.0.0","chainId":"0x1","from":"$me","calls":$callsJson$extra}]"""
+    private fun parse(params: String, taken: Set<String> = emptySet()) =
+        WcSigner.parseCalls(params, me, chains, { tokens }, { it in taken })
+    private fun refusedCode(params: String, taken: Set<String> = emptySet()): Int =
+        assertThrows(WcSigner.Refused::class.java) { parse(params, taken) }.code
+
+    @Test
+    fun batchParsesTransferAndRefusesBadRequests() {
+        val transfer = call("a9059cbb", word(other), word(BigInteger.valueOf(1_500_000)))
+        val ok = parse(calls("""[{"to":"$usdc","data":"$transfer"}]""", ""","id":"a1""""))
+        assertEquals("a1", ok.id)
+        assertEquals("Send 1.5 USDC", ok.items.single().line)
+
+        // a call to the account itself is refused, even with no data
+        assertEquals(-32602, refusedCode(calls("""[{"to":"$me","data":"0xe9ae5c53"}]""")))
+        assertEquals(-32602, refusedCode(calls("""[{"to":"$me"}]""")))
+        val many = (1..21).joinToString(",", "[", "]") { """{"to":"$other"}""" }
+        assertEquals(5700, refusedCode(calls(many)))
+        assertEquals(5700, refusedCode(calls("[]")))
+        assertEquals(5720, refusedCode(calls("""[{"to":"$other"}]""", ""","id":"a1""""), setOf("a1")))
+        assertEquals(5700, refusedCode(calls("""[{"to":"$other"}]""", ""","capabilities":{"paymasterService":{}}""")))
+        assertEquals(4100, refusedCode("""[{"chainId":"0x1","from":"$other","calls":[{"to":"$usdc"}]}]"""))
+        // 2^64 + 1 must not wrap around to chain 1
+        assertEquals(-32602, refusedCode("""[{"chainId":"0x10000000000000001","calls":[{"to":"$other"}]}]"""))
+    }
 }

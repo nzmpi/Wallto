@@ -1,11 +1,13 @@
 package com.nzm.wallet.chain
 
 import android.content.Context
+import com.nzm.wallet.abi.AbiCodec
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.storage.ApiKeyStore
 import com.nzm.wallet.utils.Constants.TWO_255
 import com.nzm.wallet.utils.Helpers.readCapped
+import com.nzm.wallet.utils.Helpers.sanitize
 import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.utils.Helpers.shortAmount
 import kotlinx.coroutines.Dispatchers
@@ -117,20 +119,6 @@ object TxSim {
         return if (s.isEmpty()) BigInteger.ZERO else BigInteger(s, 16)
     }
 
-    private fun revertText(returnData: String?): String? {
-        val d = returnData?.removePrefix("0x") ?: return null
-        if (!d.startsWith("08c379a0") || d.length < 8 + 128) return null
-        return try {
-            val len = BigInteger(d.substring(8 + 64, 8 + 128), 16).toInt()
-            val bytes =
-                d.substring(8 + 128, 8 + 128 + len * 2).chunked(2).map { it.toInt(16).toByte() }
-                    .toByteArray()
-            String(bytes, Charsets.UTF_8).take(200)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
     suspend fun run(chain: Chain, plan: TxPlan, apiKey: String, known: List<Token>): SimResult =
         withContext(Dispatchers.IO) {
             val slug = SLUGS[chain.chainId]
@@ -177,8 +165,8 @@ object TxSim {
                 j.getJSONArray("result").getJSONObject(0).getJSONArray("calls").getJSONObject(0)
             val gas = res.optString("gasUsed", "").takeIf { it.startsWith("0x") }?.let { num(it) }
             if (res.optString("status", "0x1") == "0x0") {
-                val msg = res.optJSONObject("error")?.optString("message")?.ifBlank { null }
-                val why = revertText(res.optString("returnData", "")) ?: msg ?: "execution reverted"
+                val msg = res.optJSONObject("error")?.optString("message")?.sanitize(200)?.ifBlank { null }
+                val why = AbiCodec.decodeRevert(res.optString("returnData", "")) ?: msg ?: "execution reverted"
                 return@withContext SimResult(
                     "Would fail: $why",
                     gas,
