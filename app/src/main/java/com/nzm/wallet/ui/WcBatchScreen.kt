@@ -33,7 +33,6 @@ import com.nzm.wallet.utils.Helpers.shortAmount
 import com.nzm.wallet.wc.CallKind
 import com.nzm.wallet.wc.WcService
 import com.nzm.wallet.wc.WcSigner
-import com.reown.walletkit.client.Wallet
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -100,6 +99,11 @@ private fun decodeCall(
             recipient = k.party, link = "for"
         )
 
+        CallKind.REVOKE_ALL -> BatchItem(
+            "Revoke approval for all tokens of ${shortAddress(to)}", to, value, data,
+            recipient = k.party, link = "for"
+        )
+
         CallKind.TRANSFER_FROM -> BatchItem(
             "Transfer $amount from ${shortAddress(k.from!!)}", to, value, data,
             recipient = k.party
@@ -142,7 +146,10 @@ private fun parseRequest(item: WcService.Request, vm: WalletViewModel, signer: S
             val data = Numeric.hexStringToByteArray(c.optString("data", "0x").ifBlank { "0x" })
             decodeCall(chain, tokens, to, value, data)
         }
-        Req.Ok(version, o.optString("id", ""), chain, items)
+        val id = o.optString("id", "")
+        if (id.isNotBlank() && WcService.hasCall(item.request.topic, id))
+            return Req.Bad("The site reused a batch id.", 5720)
+        Req.Ok(version, id, chain, items)
     } catch (e: Exception) {
         Req.Bad("Could not read the request: ${e.message}", -32602)
     }
@@ -159,8 +166,7 @@ fun WcBatchScreen(
     val req = item.request
     val site = req.peerMetaData
     val (warn, blocked) = verdict(item.verify)
-    val verified =
-        item.verify.isScam != true && item.verify.validation == Wallet.Model.Validation.VALID
+    val verified = isVerified(item.verify)
 
     val session = rememberSessionSigner(
         vault = vault,
@@ -258,12 +264,16 @@ fun WcBatchScreen(
         val pl = editor.plan ?: return
         runner.launch {
             vm.annotateNext(site?.name ?: site?.url, "Batch of ${parsed.items.size} calls")
-            val hash = session.sign { c -> SendTx.signAndSend(pl, c) }
+            val hash = try {
+                session.sign { c -> SendTx.signAndSend(pl, c) }
+            } finally {
+                vm.annotateNext(null, null) // a canceled prompt must not label the next tx
+            }
             val bundleId = parsed.id.ifBlank {
                 "0x" + ByteArray(32).also { SecureRandom().nextBytes(it) }
                     .joinToString("") { "%02x".format(it) }
             }
-            WcService.saveCall(bundleId, parsed.chain.chainId, hash)
+            WcService.saveCall(req.topic, bundleId, parsed.chain.chainId, hash)
             // EIP-5792 version 1 answers with the id alone, version 2 with an object
             val result = if (parsed.version.startsWith("1")) bundleId
             else JSONObject().put("id", bundleId).toString()

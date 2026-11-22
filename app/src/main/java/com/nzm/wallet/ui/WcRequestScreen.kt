@@ -59,7 +59,7 @@ internal fun verdict(v: Wallet.Model.VerifyContext): Pair<String, Boolean> = whe
     else -> "Domain could not be verified. Check the name and address yourself." to false
 }
 
-private fun isVerified(v: Wallet.Model.VerifyContext) =
+internal fun isVerified(v: Wallet.Model.VerifyContext) =
     v.isScam != true && v.validation == Wallet.Model.Validation.VALID
 
 private sealed interface Parsed {
@@ -111,6 +111,11 @@ private fun analyze(tx: WcTx, chain: Chain, tokens: List<Token>): Summary {
         CallKind.APPROVE_ALL -> Summary(
             "Approving all tokens", null, null, false, null, c.party, "Operator",
             danger = true, plain = false, isTransfer = false
+        )
+
+        CallKind.REVOKE_ALL -> Summary(
+            "Revoking approval for all tokens", null, null, false, null, c.party, "Operator",
+            danger = false, plain = false, isTransfer = false
         )
 
         CallKind.TRANSFER_FROM -> Summary(
@@ -255,7 +260,11 @@ fun WcRequestScreen(
                     val pl = editor.plan ?: return@launch
                     val desc = WcSigner.describe(parsed.t, tokens).first
                     vm.annotateNext(site?.name ?: site?.url, desc.lineSequence().first())
-                    session.sign { SendTx.signAndSend(pl, it) }
+                    try {
+                        session.sign { SendTx.signAndSend(pl, it) }
+                    } finally {
+                        vm.annotateNext(null, null) // a canceled prompt must not label the next tx
+                    }
                 }
 
                 is Parsed.Bad -> return@launch

@@ -20,7 +20,8 @@ import java.math.BigInteger
 
 class DelegationTest {
     // well-known test key (Hardhat account 0), never holds real funds
-    private val creds = Credentials.create("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
+    private val creds =
+        Credentials.create("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
     private val chain = Chain(11155111, "Sepolia", "https://example.invalid", "ETH")
     private val delegate = "0x000000009B1D0aF20D8C6d0A44e162d11F9b8f00"
     private val nonce = BigInteger.valueOf(7)
@@ -45,7 +46,10 @@ class DelegationTest {
         val auth = tx.authorizationList.single()
         assertEquals(BigInteger.valueOf(chain.chainId), auth.chainId) // never chain 0
         assertTrue(auth.address.equals(delegate, true))
-        assertEquals(nonce + BigInteger.ONE, auth.nonce)              // sender's nonce is bumped first
+        assertEquals(
+            nonce + BigInteger.ONE,
+            auth.nonce
+        )              // sender's nonce is bumped first
     }
 
     @Test

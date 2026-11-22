@@ -20,9 +20,6 @@ interface WalletDao {
     @Query("SELECT * FROM wallets ORDER BY createdAt, id")
     suspend fun all(): List<WalletRow>
 
-    @Query("SELECT * FROM wallets WHERE id = :id")
-    suspend fun get(id: String): WalletRow?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(row: WalletRow)
 

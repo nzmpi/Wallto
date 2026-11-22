@@ -5,6 +5,7 @@ import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.storage.ApiKeyStore
 import com.nzm.wallet.utils.Constants.TWO_255
+import com.nzm.wallet.utils.Helpers.readCapped
 import com.nzm.wallet.utils.Helpers.shortAddress
 import com.nzm.wallet.utils.Helpers.shortAmount
 import kotlinx.coroutines.Dispatchers
@@ -12,7 +13,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.web3j.crypto.Keys
-import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
@@ -81,19 +81,10 @@ object TxSim {
 
     private fun hex(v: BigInteger) = "0x" + v.toString(16)
 
-    private fun readCapped(c: HttpURLConnection, code: Int): String {
+    private fun readBody(c: HttpURLConnection, code: Int): String {
         val ins = if (code in 200..299) c.inputStream else c.errorStream ?: return ""
-        val buf = ByteArrayOutputStream()
-        ins.use {
-            val chunk = ByteArray(8192)
-            while (true) {
-                val n = it.read(chunk)
-                if (n < 0) break
-                buf.write(chunk, 0, n)
-                check(buf.size() <= 2_000_000) { "Response too large" }
-            }
-        }
-        return buf.toString("UTF-8")
+        val bytes = ins.readCapped(2_000_000) ?: error("Response too large")
+        return String(bytes, Charsets.UTF_8)
     }
 
     private fun post(url: String, body: String): JSONObject {
@@ -108,7 +99,7 @@ object TxSim {
             val code = c.responseCode
             if (code == 401 || code == 403) throw IllegalStateException("Alchemy rejected the key")
             if (code == 429) throw IllegalStateException("Alchemy rate limit reached. Try again later.")
-            val text = readCapped(c, code)
+            val text = readBody(c, code)
             return try {
                 JSONObject(text)
             } catch (_: Exception) {

@@ -12,6 +12,7 @@ import org.web3j.crypto.RawTransaction
 import org.web3j.crypto.SignedRawTransaction
 import org.web3j.crypto.TransactionDecoder
 import org.web3j.crypto.TransactionEncoder
+import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameterName
 import org.web3j.protocol.core.Response
 import org.web3j.protocol.core.methods.request.Transaction
@@ -89,19 +90,6 @@ object SendTx {
             if (est == BigInteger.valueOf(21000)) est
             else est * BigInteger.valueOf(11) / BigInteger.TEN // 10% headroom for contract recipients
 
-        val block = web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false)
-            .send().ok().block
-        val fee: Fee = if (block.baseFeePerGasRaw != null) {
-            val tip = try {
-                web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
-            } catch (_: Exception) {
-                GWEI
-            }
-            Fee.Eip1559(block.baseFeePerGas * BigInteger.valueOf(2) + tip, tip)
-        } else {
-            Fee.Legacy(web3.ethGasPrice().send().ok().gasPrice)
-        }
-
         val plan = TxPlan(
             chain,
             from,
@@ -109,7 +97,7 @@ object SendTx {
             value,
             nonce,
             gasLimit,
-            fee,
+            fee(web3),
             data,
             recipient,
             token,
@@ -193,20 +181,26 @@ object SendTx {
             if (receipt.isPresent) receipt.get().isStatusOK else null
         }
 
-    /** Fee per gas the same way plan() picks it. Used to compute "Max" for the native coin. */
-    suspend fun maxFeePerGas(chain: Chain): BigInteger = withContext(Dispatchers.IO) {
-        val web3 = Rpc.web3(chain.rpcUrl)
+    /** The one fee rule: 2 x base fee + tip on EIP-1559 chains, the node's gas price otherwise. */
+    private fun fee(web3: Web3j): Fee {
         val block =
             web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false).send().ok().block
-        if (block.baseFeePerGasRaw != null) {
-            val tip = try {
-                web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
-            } catch (_: Exception) {
-                GWEI
-            }
-            block.baseFeePerGas * BigInteger.valueOf(2) + tip
-        } else {
+        if (block.baseFeePerGasRaw == null) return Fee.Legacy(
             web3.ethGasPrice().send().ok().gasPrice
+        )
+        val tip = try {
+            web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
+        } catch (_: Exception) {
+            GWEI
+        }
+        return Fee.Eip1559(block.baseFeePerGas * BigInteger.valueOf(2) + tip, tip)
+    }
+
+    /** Fee per gas the same way plan() picks it. Used to compute "Max" for the native coin. */
+    suspend fun maxFeePerGas(chain: Chain): BigInteger = withContext(Dispatchers.IO) {
+        when (val f = fee(Rpc.web3(chain.rpcUrl))) {
+            is Fee.Eip1559 -> f.maxFeePerGas
+            is Fee.Legacy -> f.gasPrice
         }
     }
 

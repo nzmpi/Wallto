@@ -75,9 +75,12 @@ class Vault(context: Context) {
     ): T {
         val (type, bytes) = load(activity, id)
         try {
-            val creds = when (type) {
-                SecretType.MNEMONIC -> WalletCore.deriveCredentials(String(bytes))
-                SecretType.PRIVATE_KEY -> WalletCore.credentialsFromPrivateKey(String(bytes))
+            // PBKDF2 + BIP-32 take a moment: keep them off the UI thread
+            val creds = withContext(Dispatchers.Default) {
+                when (type) {
+                    SecretType.MNEMONIC -> WalletCore.deriveCredentials(String(bytes))
+                    SecretType.PRIVATE_KEY -> WalletCore.credentialsFromPrivateKey(String(bytes))
+                }
             }
             return block(creds)
         } finally {

@@ -114,6 +114,13 @@ class WcSignerTest {
     }
 
     @Test
+    fun revokeAllIsNotDanger() {
+        val c = WcSigner.decodeCall(other, call("a22cb465", word(me), word("0")), tokens)!!
+        assertEquals(CallKind.REVOKE_ALL, c.kind)
+        assertFalse(c.danger)
+    }
+
+    @Test
     fun unknownOrTruncatedIsNotDecoded() {
         assertNull(WcSigner.decodeCall(usdc, call("deadbeef", word(other)), tokens))
         assertNull(
