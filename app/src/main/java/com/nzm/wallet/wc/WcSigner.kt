@@ -140,6 +140,7 @@ object WcSigner {
                     num(1),
                     token
                 )
+
                 "23b872dd" -> KnownCall(
                     CallKind.TRANSFER_FROM,
                     addr(1),

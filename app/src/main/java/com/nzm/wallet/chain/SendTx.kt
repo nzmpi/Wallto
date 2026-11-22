@@ -185,7 +185,9 @@ object SendTx {
     private fun fee(web3: Web3j): Fee {
         val block =
             web3.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false).send().ok().block
-        if (block.baseFeePerGasRaw == null) return Fee.Legacy(web3.ethGasPrice().send().ok().gasPrice)
+        if (block.baseFeePerGasRaw == null) return Fee.Legacy(
+            web3.ethGasPrice().send().ok().gasPrice
+        )
         val tip = try {
             web3.ethMaxPriorityFeePerGas().send().ok().maxPriorityFeePerGas
         } catch (_: Exception) {

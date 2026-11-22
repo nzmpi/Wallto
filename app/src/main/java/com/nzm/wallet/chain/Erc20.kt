@@ -22,7 +22,11 @@ import java.math.BigInteger
 
 object Erc20 {
     private val STRING_OUT =
-        Function("", emptyList<Type<*>>(), listOf(object : TypeReference<Utf8String>() {})).outputParameters
+        Function(
+            "",
+            emptyList<Type<*>>(),
+            listOf(object : TypeReference<Utf8String>() {})
+        ).outputParameters
 
     private fun decode(fn: Function, raw: ByteArray): List<Type<*>> =
         FunctionReturnDecoder.decode(
