@@ -205,7 +205,8 @@ fun WcBatchScreen(
             verified = verified,
             warn = warn,
             blocked = blocked,
-            otherWallet = session.otherWallet
+            otherWallet = session.otherWallet,
+            onDisconnect = { if (!busy) WcService.disconnect(req.topic) }
         )
 
         when (parsed) {

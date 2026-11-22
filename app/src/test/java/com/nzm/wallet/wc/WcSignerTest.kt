@@ -8,6 +8,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.web3j.crypto.Credentials
+import org.web3j.crypto.Hash
+import org.web3j.crypto.Keys
+import org.web3j.crypto.Sign
+import org.web3j.utils.Numeric
 import java.math.BigInteger
 
 class WcSignerTest {
@@ -51,6 +56,54 @@ class WcSignerTest {
     }
 
     @Test
+    fun typedOverOwnAccountDomainIsRefused() {
+        // Calibur-style signed batch: the account itself is the verifying contract
+        val json = """{"types":{"EIP712Domain":[]},"primaryType":"SignedBatchedCall",
+            "domain":{"name":"Calibur","chainId":1,"verifyingContract":"${
+            me.uppercase().replace("0X", "0x")
+        }"},"message":{}}"""
+        assertThrows(IllegalArgumentException::class.java) {
+            WcSigner.parseTyped("""["$me", ${org.json.JSONObject.quote(json)}]""", me)
+        }
+    }
+
+    // ---- signing: the exact bytes sites receive ----
+
+    private val cow = Credentials.create(Numeric.toHexString(Hash.sha3("cow".toByteArray())))
+
+    @Test
+    fun typedSignatureMatchesEip712SpecVector() {
+        val json = """{"types":{
+            "EIP712Domain":[{"name":"name","type":"string"},{"name":"version","type":"string"},
+              {"name":"chainId","type":"uint256"},{"name":"verifyingContract","type":"address"}],
+            "Person":[{"name":"name","type":"string"},{"name":"wallet","type":"address"}],
+            "Mail":[{"name":"from","type":"Person"},{"name":"to","type":"Person"},{"name":"contents","type":"string"}]},
+          "primaryType":"Mail",
+          "domain":{"name":"Ether Mail","version":"1","chainId":1,"verifyingContract":"0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC"},
+          "message":{"from":{"name":"Cow","wallet":"0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"},
+            "to":{"name":"Bob","wallet":"0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"},"contents":"Hello, Bob!"}}"""
+        val t = WcSigner.parseTyped(
+            """["${cow.address}", ${org.json.JSONObject.quote(json)}]""",
+            cow.address
+        )
+        assertEquals(
+            "0x4355c47d63924e8a72e509b65029052eb6c299d53a04e167c5775fd466751c9d" +
+                    "07299936d304c153f6443dfa05f40ff007d72911b6f72307f996231605b91562" + "1c",
+            WcSigner.signTyped(cow, t)
+        )
+    }
+
+    @Test
+    fun personalSignatureRecoversToSignerWithV27or28() {
+        val sig = Numeric.hexStringToByteArray(WcSigner.signPersonal(cow, "hello".toByteArray()))
+        assertEquals(65, sig.size)
+        assertTrue(sig[64].toInt() == 27 || sig[64].toInt() == 28)
+        val data = Sign.SignatureData(sig[64], sig.copyOfRange(0, 32), sig.copyOfRange(32, 64))
+        val key = Sign.signedPrefixedMessageToKey("hello".toByteArray(), data)
+        assertEquals(cow.address, "0x" + Keys.getAddress(key))
+    }
+
+    @Test
     fun txChecksSenderRecipientAndData() {
         val ok = WcSigner.parseTx(
             """[{"from":"$me","to":"$other","value":"0x10","data":"0xabcd"}]""",
@@ -82,6 +135,9 @@ class WcSignerTest {
         assertTrue(c.danger)
         assertTrue(c.party.equals(other, true))
         assertEquals("Unlimited USDC", WcSigner.amountLabel(c.amount, c.token))
+        // one below the max is just as unlimited: same rule as the simulation and risk notes
+        assertEquals("Unlimited USDC", WcSigner.amountLabel(MAX_UINT - BigInteger.ONE, c.token))
+        assertEquals("1.5 USDC", WcSigner.amountLabel(BigInteger.valueOf(1_500_000), c.token))
     }
 
     @Test
@@ -208,6 +264,10 @@ class WcSignerTest {
             4100,
             refusedCode("""[{"chainId":"0x1","from":"$other","calls":[{"to":"$usdc"}]}]""")
         )
+        // signed or junk numbers and junk call data are refused, not reinterpreted
+        assertEquals(-32602, refusedCode(calls("""[{"to":"$other","value":"0x-1"}]""")))
+        assertEquals(-32602, refusedCode(calls("""[{"to":"$other","data":"0xzz"}]""")))
+        assertEquals(-32602, refusedCode(calls("""[{"to":"$other","data":"0xabc"}]""")))
         // 2^64 + 1 must not wrap around to chain 1
         assertEquals(
             -32602,

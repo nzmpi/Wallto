@@ -56,7 +56,6 @@ android {
 }
 
 dependencies {
-    implementation(platform(libs.netty.bom))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
@@ -67,7 +66,12 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
     // Crypto + RPC
-    implementation(libs.web3j.core)
+    // web3j 6 pulls the AWS KMS SDK (with netty and an old jackson-core) for a signer this app never uses
+    implementation(libs.web3j.core) { exclude(group = "software.amazon.awssdk") }
+    constraints {
+        // vertx (web3j -> tuweni) pulls jackson-core 2.21.5: GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89
+        implementation(libs.jackson.core)
+    }
     implementation(libs.bcprov.jdk18on)
     // Storage for chain configs
     implementation(libs.androidx.room.runtime)
@@ -79,8 +83,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     // BOM version: latest on https://github.com/reown-com/reown-kotlin/releases
     implementation(platform(libs.reown.android.bom))
-    implementation(libs.reown.android.core)
-    implementation(libs.reown.walletkit)
+    // a Reown dependency (kethereum) lists junit as a runtime dependency: exclude it on both paths
+    implementation(libs.reown.android.core) { exclude(group = "junit") }
+    implementation(libs.reown.walletkit) { exclude(group = "junit") }
     implementation(libs.play.services.code.scanner)
     implementation(libs.core)
 

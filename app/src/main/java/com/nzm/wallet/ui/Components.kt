@@ -460,7 +460,8 @@ internal fun WcSiteHeader(
     verified: Boolean,
     warn: String,
     blocked: Boolean,
-    otherWallet: String?
+    otherWallet: String?,
+    onDisconnect: () -> Unit
 ) {
     var info by remember { mutableStateOf(false) }
     val siteUrl = url?.sanitize(200)
@@ -494,6 +495,15 @@ internal fun WcSiteHeader(
             fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger
         )
     }
+    // a site can queue requests faster than you reject them: this ends the session and drops them all
+    Text(
+        "Disconnect this site",
+        fontSize = 14.sp,
+        color = Dim.Accent,
+        modifier = Modifier
+            .clickable(onClick = onDisconnect)
+            .padding(vertical = 4.dp)
+    )
 
     if (info) {
         AlertDialog(

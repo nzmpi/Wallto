@@ -1,6 +1,7 @@
 package com.nzm.wallet.abi
 
 import com.nzm.wallet.utils.Constants
+import com.nzm.wallet.utils.Helpers.isUnlimited
 import com.nzm.wallet.utils.Helpers.isValidAddress
 import com.nzm.wallet.utils.Helpers.sanitize
 import org.json.JSONArray
@@ -288,13 +289,12 @@ object AbiCodec {
 
     fun riskNotes(sig: FunctionSig, values: List<Any>): List<String> {
         val notes = mutableListOf<String>()
-        val unlimited = Constants.TWO_255
         when (sig.signature) {
             "approve(address,uint256)", "increaseAllowance(address,uint256)" -> {
                 val spender = Keys.toChecksumAddress(values[0] as String)
                 val amount = values[1] as BigInteger
                 if (amount.signum() > 0) notes += "$spender can spend your tokens of this contract."
-                if (amount >= unlimited) {
+                if (isUnlimited(amount)) {
                     notes += "UNLIMITED allowance. The spender can take ALL your tokens at any time until you revoke it."
                 }
             }

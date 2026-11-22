@@ -120,6 +120,9 @@ object Helpers {
         return if (cut.compareTo(v) == 0) text else "≈ $text"
     }
 
+    /** The one "unlimited approval" rule: 2^255 or more never runs out, whatever the exact number. */
+    fun isUnlimited(v: BigInteger): Boolean = v >= Constants.TWO_255
+
     fun shortAddress(a: String) = a.take(6) + "…" + a.takeLast(4)
 
     fun fmt(value: BigInteger, c: Chain, maxFraction: Int? = null): String =

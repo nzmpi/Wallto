@@ -123,7 +123,6 @@ object SendTx {
                     ignoreCase = true
                 )
             ) { "Key does not match wallet address" }
-            check(Rpc.chainId(c.rpcUrl) == c.chainId) { "RPC chain ID changed. Aborting." }
 
             val raw = when (val f = plan.fee) {
                 is Fee.Eip1559 -> RawTransaction.createTransaction(
@@ -152,15 +151,39 @@ object SendTx {
                     .equals(Numeric.cleanHexPrefix(plan.data), ignoreCase = true)
             ) { "Data mismatch" }
 
-            val r = Rpc.web3(c.rpcUrl).ethSendRawTransaction(hex).send()
-            if (r.hasError()) throw IOException(r.error.message)
+            broadcast(plan, signed)
+        }
+
+    /**
+     * The one way a signed transaction leaves the app: checks the RPC still serves the plan's chain,
+     * sends, and records it. A send that fails without an answer may still have reached the node,
+     * so it is recorded as pending too: sending again from a fresh plan would pay twice.
+     */
+    internal suspend fun broadcast(plan: TxPlan, signed: ByteArray): String =
+        withContext(Dispatchers.IO) {
+            val c = plan.chain
+            check(Rpc.chainId(c.rpcUrl) == c.chainId) { "RPC chain ID changed. Aborting." }
             val hash = Numeric.toHexString(Hash.sha3(signed))
-            try {
-                onBroadcast?.invoke(plan, hash)
-            } catch (_: Exception) { /* history must never break a tx */
+            val r = try {
+                Rpc.web3(c.rpcUrl).ethSendRawTransaction(Numeric.toHexString(signed)).send()
+            } catch (e: IOException) {
+                record(plan, hash)
+                throw IOException(
+                    "No answer from the network (${e.message}). The transaction may have been sent: " +
+                            "check Activity before sending again."
+                )
             }
+            if (r.hasError()) throw IOException(Rpc.describeError(r.error))
+            record(plan, hash)
             hash
         }
+
+    private fun record(plan: TxPlan, hash: String) {
+        try {
+            onBroadcast?.invoke(plan, hash)
+        } catch (_: Exception) { /* history must never break a tx */
+        }
+    }
 
     /** true = success, false = reverted, null = not mined in time. */
     suspend fun waitForReceipt(rpcUrl: String, hash: String, timeoutMs: Long = 120_000): Boolean? =
