@@ -77,7 +77,8 @@ object IconStore {
     private val mem = LruCache<String, ImageBitmap>(96)
     private val failed =
         ConcurrentHashMap.newKeySet<String>()   // network errors: retry next launch
-    private val lock = Mutex()
+    // one lock per icon: two screens asking for the same logo download it once, others don't wait
+    private val locks = ConcurrentHashMap<String, Mutex>()
 
     fun init(context: Context) {
         if (dir == null) dir =
@@ -153,7 +154,7 @@ object IconStore {
         val none = File(d, "$key.none")
         if (!png.exists()) {
             if (none.exists() || key in failed) return@withContext null
-            lock.withLock {
+            locks.computeIfAbsent(key) { Mutex() }.withLock {
                 if (png.exists() || none.exists()) return@withLock
                 val c = URL(url).openConnection() as HttpURLConnection
                 try {
@@ -174,9 +175,10 @@ object IconStore {
                     }
                     val tmp = File(d, "$key.tmp")
                     tmp.writeBytes(bytes)
-                    if (decode(tmp) == null) {
+                    val fresh = decode(tmp)
+                    if (fresh == null) {
                         tmp.delete(); none.createNewFile()
-                    } else tmp.renameTo(png)
+                    } else if (tmp.renameTo(png)) mem.put(key, fresh)
                 } catch (_: Exception) {
                     failed.add(key)
                 } finally {
@@ -184,6 +186,7 @@ object IconStore {
                 }
             }
         }
+        mem.get(key)?.let { return@withContext it }
         if (!png.exists()) return@withContext null
         val bmp = decode(png) ?: run { png.delete(); return@withContext null }
         mem.put(key, bmp)

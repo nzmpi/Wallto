@@ -161,10 +161,12 @@ object WcService {
     }
 
     fun pair(uri: String) {
-        val u = uri.trim()
-        if (!u.startsWith("wc:")) {
+        val t = uri.trim()
+        // QR codes may carry "WC:", which the scanner and deep links accept too
+        if (!t.startsWith("wc:", ignoreCase = true)) {
             _status.value = "Not a WalletConnect link"; return
         }
+        val u = "wc:" + t.substring(3)
         if (!_ready.value) {
             _status.value =
                 "WalletConnect is not ready. Add the Reown project ID in Settings → Connected sites, then restart the app."
@@ -186,16 +188,29 @@ object WcService {
             return
         }
         _sessions.value = all.filter { it.metaData != null }
-        _sessions.value.forEach { s -> accountOf(s)?.let { cacheAccount(s.topic, it) } }
-        // batch ids of sessions that are gone: nobody can ask for them any more
+        all.forEach { s -> accountOf(s)?.let { cacheAccount(s.topic, it) } }
         val live = all.map { it.topic }.toSet()
+        // requests of an ended or expired session can no longer be answered: never sign them
+        _requests.update { l -> l.filter { it.request.topic in live } }
+        // cached accounts and batch ids of sessions that are gone: nobody can ask for them any more
         accountPrefs?.let { p ->
-            val stale = p.all.keys.filter { it.startsWith("call:") && it.split(':')[1] !in live }
+            val stale = p.all.keys.filter {
+                (if (it.startsWith("call:")) it.split(':')[1] else it) !in live
+            }
             if (stale.isNotEmpty()) p.edit { stale.forEach { remove(it) } }
         }
     }
 
+    /** All live sessions, including ones without metadata that the sites list hides. */
+    fun allTopics(): List<Pair<String, String?>> = try {
+        WalletKit.getListOfActiveSessions().map { it.topic to accountOf(it) }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
     fun disconnect(topic: String) {
+        _requests.update { l -> l.filter { it.request.topic != topic } }
+        accountPrefs?.edit { remove(topic) }
         WalletKit.disconnectSession(
             Wallet.Params.SessionDisconnect(sessionTopic = topic),
             onSuccess = { refreshSessions() },
@@ -203,7 +218,6 @@ object WcService {
                 _status.value = it.throwable.message ?: "Disconnect failed"; refreshSessions()
             }
         )
-        accountPrefs?.edit { remove(topic) }
     }
 
     /** Shares the given wallet address on every chain saved in the wallet. Returns an error text or null. */

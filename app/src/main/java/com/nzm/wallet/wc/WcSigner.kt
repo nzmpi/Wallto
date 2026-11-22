@@ -4,7 +4,7 @@ import com.nzm.wallet.abi.SelectorLookup
 import com.nzm.wallet.chain.BatchItem
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
-import com.nzm.wallet.utils.Constants.MAX_UINT
+import com.nzm.wallet.utils.Helpers.isUnlimited
 import com.nzm.wallet.utils.Helpers.isValidAddress
 import com.nzm.wallet.utils.Helpers.sanitize
 import com.nzm.wallet.utils.Helpers.shortAddress
@@ -96,9 +96,13 @@ object WcSigner {
         val json = raw as? String ?: raw.toString()
         val o = JSONObject(json)
         val domain = o.getJSONObject("domain")
-        val chainId = when (val v = domain.opt("chainId")) {
-            is Number -> v.toLong()
-            is String -> if (v.startsWith("0x")) v.drop(2).toLong(16) else v.toLong()
+        // a delegated account accepts signed calls over its own domain (Calibur's SignedBatchedCall):
+        // the same hidden full-authority calls that SELF_CALL refuses as transactions
+        require(!domain.optString("verifyingContract").trim().equals(wallet, true)) { SELF_SIGN }
+        val v = domain.opt("chainId")
+        val chainId = when {
+            v is Number -> v.toLong()
+            v is String -> if (v.startsWith("0x")) v.drop(2).toLong(16) else v.toLong()
             else -> null
         }
         return TypedReq(
@@ -140,6 +144,9 @@ object WcSigner {
     private const val SELF_CALL =
         "Calls to your own account are refused: they can run hidden calls or change the account's settings"
 
+    private const val SELF_SIGN =
+        "Signatures for your own account are refused: they can authorize calls from it"
+
     /** A wallet_sendCalls request that can be signed. [id] is blank when the site sent none. */
     class BatchReq(
         val version: String,
@@ -151,8 +158,11 @@ object WcSigner {
     /** A refusal with the EIP-5792 / JSON-RPC error code to send back to the site. */
     class Refused(message: String, val code: Int) : IllegalArgumentException(message)
 
+    /** A uint256 in hex. "-1", "+1" or junk is refused: BigInteger would accept the signs. */
     private fun hexBig(s: String?): BigInteger {
         val t = s?.removePrefix("0x")?.takeIf { it.isNotEmpty() } ?: return BigInteger.ZERO
+        if (t.length > 64 || !t.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' })
+            throw Refused("Invalid number: ${t.take(20)}", -32602)
         return BigInteger(t, 16)
     }
 
@@ -205,7 +215,10 @@ object WcSigner {
             val to = Keys.toChecksumAddress(toRaw)
             if (to.equals(signer, true)) throw Refused("Call ${i + 1}: $SELF_CALL", -32602)
             val value = hexBig(c.optString("value", "0x0"))
-            val data = Numeric.hexStringToByteArray(c.optString("data", "0x").ifBlank { "0x" })
+            val dataHex = c.optString("data", "0x").ifBlank { "0x" }
+            // same rule as parseTx: hexStringToByteArray would turn junk into other bytes
+            if (!isHex(dataHex)) throw Refused("Call ${i + 1} has bad call data", -32602)
+            val data = Numeric.hexStringToByteArray(dataHex)
             batchItem(chain, tokens, to, value, data)
         }
         val id = o.optString("id", "")
@@ -248,7 +261,7 @@ object WcSigner {
             CallKind.APPROVE -> BatchItem(
                 "Approve $amount", to, value, data,
                 buildList {
-                    if (k.amount == MAX_UINT) add("Unlimited approval lets ${shortAddress(k.party)} spend all your tokens.")
+                    if (isUnlimited(k.amount)) add("Unlimited approval lets ${shortAddress(k.party)} spend all your tokens.")
                     if (tk == null) add(unlisted)
                 },
                 recipient = k.party, link = "for"
@@ -310,7 +323,7 @@ object WcSigner {
 
     /** "Unlimited USDC", "1.5 USDC" or "123 raw units" when the token is not in the list. */
     fun amountLabel(raw: BigInteger, token: Token?): String = when {
-        raw == MAX_UINT -> "Unlimited" + (token?.let { " ${it.symbol}" } ?: "")
+        isUnlimited(raw) -> "Unlimited" + (token?.let { " ${it.symbol}" } ?: "")
         token == null -> "$raw raw units"
         else -> shortAmount(raw, token.decimals) + " ${token.symbol}"
     }

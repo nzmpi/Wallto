@@ -117,9 +117,12 @@ internal fun TxMono(text: String) {
 internal fun gwei(w: BigInteger) =
     BigDecimal(w).movePointLeft(9).stripTrailingZeros().toPlainString()
 
+/** Plain gwei digits ("1e3" or "-1" give null). Zero is allowed: a 0 tip is normal on many L2s. */
 internal fun weiOf(gweiText: String): BigInteger? =
-    gweiText.trim().replace(',', '.').toBigDecimalOrNull()
-        ?.movePointRight(9)?.toBigInteger()?.takeIf { it.signum() > 0 }
+    gweiText.trim().takeIf { GWEI_TEXT.matches(it) }?.replace(',', '.')?.toBigDecimal()
+        ?.movePointRight(9)?.toBigInteger()
+
+private val GWEI_TEXT = Regex("\\d+([.,]\\d*)?|[.,]\\d+")
 
 @Composable
 internal fun TxFeeDialog(plan: TxPlan, base: TxPlan, onSave: (Fee) -> Unit, onDismiss: () -> Unit) {
@@ -168,7 +171,7 @@ internal fun TxFeeDialog(plan: TxPlan, base: TxPlan, onSave: (Fee) -> Unit, onDi
         },
         confirmButton = {
             TextButton(onClick = {
-                val m = weiOf(max)
+                val m = weiOf(max)?.takeIf { it.signum() > 0 }
                 if (m == null) {
                     error = "Enter a valid number above 0"; return@TextButton
                 }

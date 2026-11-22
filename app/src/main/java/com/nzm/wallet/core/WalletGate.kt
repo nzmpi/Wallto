@@ -76,15 +76,9 @@ import kotlin.time.Duration.Companion.milliseconds
 /** Disconnects every site whose session account is [address]. */
 private fun disconnectSessionsOf(address: String) {
     runCatching {
-        WcService.sessions.value
-            .filter { s ->
-                s.namespaces.values.any { ns ->
-                    ns.accounts.any {
-                        it.substringAfterLast(':').equals(address, ignoreCase = true)
-                    }
-                }
-            }
-            .forEach { WcService.disconnect(it.topic) }
+        WcService.allTopics()
+            .filter { (_, account) -> account.equals(address, ignoreCase = true) }
+            .forEach { (topic, _) -> WcService.disconnect(topic) }
     }
 }
 
@@ -327,6 +321,8 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
             confirmLabel = "Reset",
             onConfirm = {
                 confirmReset = false
+                // the wallets these sites connected with are gone
+                runCatching { WcService.allTopics().forEach { WcService.disconnect(it.first) } }
                 vault.delete()
                 hasWallet = false
                 keyLost = false
@@ -349,7 +345,7 @@ fun WalletGate(activity: FragmentActivity, vault: Vault, vm: WalletViewModel) {
                     // biometric prompt; throws if canceled or failed, so nothing is deleted
                     val (_, bytes) = vault.load(activity)
                     bytes.fill(0)
-                    runCatching { WcService.sessions.value.forEach { WcService.disconnect(it.topic) } }
+                    runCatching { WcService.allTopics().forEach { WcService.disconnect(it.first) } }
                     vault.delete()
                     vm.wipeWallets()
                     hasWallet = false

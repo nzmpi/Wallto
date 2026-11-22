@@ -2,10 +2,12 @@ package com.nzm.wallet.chain
 
 import android.content.Context
 import com.nzm.wallet.abi.AbiCodec
+import com.nzm.wallet.abi.AbiType
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.storage.ApiKeyStore
-import com.nzm.wallet.utils.Constants.TWO_255
+import com.nzm.wallet.utils.Constants.ZERO
+import com.nzm.wallet.utils.Helpers.isUnlimited
 import com.nzm.wallet.utils.Helpers.readCapped
 import com.nzm.wallet.utils.Helpers.sanitize
 import com.nzm.wallet.utils.Helpers.shortAddress
@@ -14,7 +16,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.web3j.crypto.Hash
 import org.web3j.crypto.Keys
+import org.web3j.utils.Numeric
 import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
@@ -38,7 +42,16 @@ class SimApproval(
     val symbol: String,
     val spender: String,
     val amount: String,
-    val unlimited: Boolean
+    val unlimited: Boolean,
+    val nft: Boolean = false       // [amount] is "all items" or "#id", [symbol] the collection
+)
+
+/** What the logs of a simulated call do to the user's address, before token lookups. */
+internal class SimLogs(
+    val deltas: Map<String, BigInteger>,                 // token (lowercase) -> net change
+    val nfts: List<String>,                              // "+NFT #1 (0xab…cd)", "−3 × #7 (…)"
+    val approvals: List<Triple<String, String, BigInteger>>, // token, spender, amount
+    val nftApprovals: List<SimApproval>
 )
 
 class SimResult(
@@ -78,6 +91,10 @@ object TxSim {
     private const val APPROVAL =
         "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
     private const val NATIVE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    private val TRANSFER_SINGLE = Hash.sha3String("TransferSingle(address,address,address,uint256,uint256)")
+    private val TRANSFER_BATCH = Hash.sha3String("TransferBatch(address,address,address,uint256[],uint256[])")
+    private val APPROVAL_FOR_ALL = Hash.sha3String("ApprovalForAll(address,address,bool)")
+    private val UINTS = AbiType.Arr(AbiType.Uint(256))
 
     fun supported(chainId: Long) = SLUGS.containsKey(chainId)
 
@@ -118,6 +135,79 @@ object TxSim {
         val s = h.removePrefix("0x")
         return if (s.isEmpty()) BigInteger.ZERO else BigInteger(s, 16)
     }
+
+    /**
+     * Reads ERC-20 / ERC-721 / ERC-1155 transfers and approvals that touch [owner].
+     * ERC-1155 matters: without it a call that sends your items away would show "no changes".
+     */
+    internal fun readLogs(logs: JSONArray, owner: String): SimLogs {
+        val user = owner.lowercase()
+        val deltas = LinkedHashMap<String, BigInteger>()
+        val nfts = mutableListOf<String>()
+        val approvals = mutableListOf<Triple<String, String, BigInteger>>()
+        val nftApprovals = mutableListOf<SimApproval>()
+        fun item(sign: String, label: String, collection: String) =
+            nfts.add("$sign$label (${shortAddress(Keys.toChecksumAddress(collection))})")
+        fun moved(from: String, to: String, label: String, collection: String) {
+            if (from == user) item("−", label, collection)
+            if (to == user) item("+", label, collection)
+        }
+        for (i in 0 until logs.length()) {
+            val l = logs.getJSONObject(i)
+            val topics = l.optJSONArray("topics") ?: continue
+            if (topics.length() == 0) continue
+            fun topic(n: Int) = topics.getString(n)
+            val t0 = topic(0).lowercase()
+            val token = l.optString("address").lowercase()
+            val data = l.optString("data", "0x")
+            when {
+                t0 == TRANSFER && topics.length() == 3 -> {
+                    val v = num(data)
+                    if (addrOf(topic(1)) == user) deltas[token] = (deltas[token] ?: BigInteger.ZERO) - v
+                    if (addrOf(topic(2)) == user) deltas[token] = (deltas[token] ?: BigInteger.ZERO) + v
+                }
+
+                t0 == TRANSFER && topics.length() == 4 ->
+                    moved(addrOf(topic(1)), addrOf(topic(2)), "NFT #${num(topic(3))}", token)
+
+                t0 == TRANSFER_SINGLE && topics.length() == 4 -> {
+                    val d = data.removePrefix("0x")
+                    val id = num(d.take(64))
+                    val v = num(d.drop(64).take(64))
+                    moved(addrOf(topic(2)), addrOf(topic(3)), "$v × #$id", token)
+                }
+
+                t0 == TRANSFER_BATCH && topics.length() == 4 -> {
+                    val (ids, values) = AbiCodec.decodeOutputs(
+                        listOf(UINTS, UINTS), Numeric.hexStringToByteArray(data)
+                    ).map { it.removeSurrounding("[", "]").split(", ").filter(String::isNotBlank) }
+                    ids.forEachIndexed { k, id ->
+                        moved(addrOf(topic(2)), addrOf(topic(3)), "${values.getOrNull(k) ?: "?"} × #$id", token)
+                    }
+                }
+
+                t0 == APPROVAL && topics.length() == 3 && addrOf(topic(1)) == user ->
+                    approvals.add(Triple(token, addrOf(topic(2)), num(data)))
+
+                // ERC-721 approve(spender, id): one item
+                t0 == APPROVAL && topics.length() == 4 && addrOf(topic(1)) == user &&
+                        addrOf(topic(2)) != ZERO ->
+                    nftApprovals.add(nftApproval(token, addrOf(topic(2)), "#${num(topic(3))}", false))
+
+                t0 == APPROVAL_FOR_ALL && topics.length() == 3 && addrOf(topic(1)) == user &&
+                        num(data).signum() != 0 ->
+                    nftApprovals.add(nftApproval(token, addrOf(topic(2)), "all items", true))
+            }
+        }
+        return SimLogs(deltas, nfts, approvals, nftApprovals)
+    }
+
+    private fun nftApproval(collection: String, spender: String, what: String, all: Boolean) =
+        SimApproval(
+            shortAddress(Keys.toChecksumAddress(collection)),
+            shortAddress(Keys.toChecksumAddress(spender)),
+            what, all, nft = true
+        )
 
     suspend fun run(chain: Chain, plan: TxPlan, apiKey: String, known: List<Token>): SimResult =
         withContext(Dispatchers.IO) {
@@ -178,40 +268,8 @@ object TxSim {
                 )
             }
 
-            val user = plan.from.lowercase()
-            val deltas = LinkedHashMap<String, BigInteger>()
-            val nfts = mutableListOf<String>()
-            val approvalsRaw = mutableListOf<Triple<String, String, BigInteger>>()
-            val logs = res.optJSONArray("logs") ?: JSONArray()
-            for (i in 0 until logs.length()) {
-                val l = logs.getJSONObject(i)
-                val topics = l.optJSONArray("topics") ?: continue
-                if (topics.length() == 0) continue
-                val t0 = topics.getString(0).lowercase()
-                val token = l.optString("address").lowercase()
-                if (t0 == TRANSFER && topics.length() == 3) {
-                    val from = addrOf(topics.getString(1))
-                    val to = addrOf(topics.getString(2))
-                    val v = num(l.optString("data", "0x"))
-                    if (from == user) deltas[token] = (deltas[token] ?: BigInteger.ZERO) - v
-                    if (to == user) deltas[token] = (deltas[token] ?: BigInteger.ZERO) + v
-                } else if (t0 == TRANSFER && topics.length() == 4) {
-                    val from = addrOf(topics.getString(1))
-                    val to = addrOf(topics.getString(2))
-                    val id = num(topics.getString(3))
-                    val short = shortAddress(Keys.toChecksumAddress(token))
-                    if (from == user) nfts.add("−NFT #$id ($short)")
-                    if (to == user) nfts.add("+NFT #$id ($short)")
-                } else if (t0 == APPROVAL && topics.length() == 3 && addrOf(topics.getString(1)) == user) {
-                    approvalsRaw.add(
-                        Triple(
-                            token,
-                            addrOf(topics.getString(2)),
-                            num(l.optString("data", "0x"))
-                        )
-                    )
-                }
-            }
+            val read = readLogs(res.optJSONArray("logs") ?: JSONArray(), plan.from)
+            val deltas = LinkedHashMap(read.deltas)
             // some nodes do not log the top-level value; do not miss it
             if (plan.value.signum() > 0 && deltas[NATIVE] == null) deltas[NATIVE] =
                 plan.value.negate()
@@ -250,16 +308,16 @@ object TxSim {
                     )
                 }
             }
-            val approvals = approvalsRaw.map { (addr, spender, v) ->
+            val approvals = read.approvals.map { (addr, spender, v) ->
                 val t = info(addr)
                 val dec = t?.decimals ?: 18
                 SimApproval(
                     t?.symbol ?: shortAddress(Keys.toChecksumAddress(addr)),
                     shortAddress(Keys.toChecksumAddress(spender)),
                     shortAmount(v, dec),
-                    v >= TWO_255
+                    isUnlimited(v)
                 )
             }
-            SimResult(null, gas, lines.sortedBy { it.incoming }, nfts, approvals)
+            SimResult(null, gas, lines.sortedBy { it.incoming }, read.nfts, approvals + read.nftApprovals)
         }
 }

@@ -38,17 +38,7 @@ object Delegation {
      * the authorization nonce is the transaction nonce + 1.
      */
     suspend fun signAndSend(plan: TxPlan, delegate: String, creds: Credentials): String =
-        withContext(Dispatchers.IO) {
-            val raw = encode(plan, delegate, creds)
-            val res =
-                Rpc.web3(plan.chain.rpcUrl).ethSendRawTransaction(Numeric.toHexString(raw)).send()
-            if (res.hasError()) throw IllegalStateException(
-                res.error.message ?: "Node rejected the transaction"
-            )
-            val hash = Numeric.toHexString(Hash.sha3(raw))
-            runCatching { SendTx.onBroadcast?.invoke(plan, hash) } // history must never break a tx
-            hash
-        }
+        SendTx.broadcast(plan, withContext(Dispatchers.Default) { encode(plan, delegate, creds) })
 
     /** The signed type-4 transaction bytes. No network: kept apart so tests can decode it. */
     internal fun encode(plan: TxPlan, delegate: String, creds: Credentials): ByteArray {

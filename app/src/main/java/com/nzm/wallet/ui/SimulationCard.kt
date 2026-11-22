@@ -153,7 +153,9 @@ fun SimulationCard(vm: WalletViewModel, chain: Chain, plan: TxPlan) {
                 }
                 r.approvals.forEach { a ->
                     Text(
-                        "Approves ${a.spender} to spend " + (if (a.unlimited) "UNLIMITED" else a.amount) + " ${a.symbol}",
+                        if (a.nft) "Gives ${a.spender} control of " +
+                                (if (a.unlimited) "ALL your items" else "item ${a.amount}") + " in ${a.symbol}"
+                        else "Approves ${a.spender} to spend " + (if (a.unlimited) "UNLIMITED" else a.amount) + " ${a.symbol}",
                         fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim.Danger,
                         modifier = Modifier.padding(top = 6.dp)
                     )

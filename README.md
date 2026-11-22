@@ -89,8 +89,8 @@ Set these in the app under Settings. None of them is required to send funds.
 ## Stack
 
 - Kotlin, Jetpack Compose, a custom dim theme with stroke icons.
-- web3j 4.12.2 with BouncyCastle. Type-4 (EIP-7702) transactions are encoded and signed by hand.
-- Room for chains, tokens, contacts, wallets, activity and saved contracts.
+- web3j 6.1.0 with BouncyCastle. Type-4 (EIP-7702) transactions are encoded and signed by hand.
+- Room for chains, tokens, contacts, wallets and activity. Saved contracts and their ABIs are kept in SharedPreferences.
 - Android Keystore (AES-GCM) and BiometricPrompt.
 - Reown WalletKit for WalletConnect v2.
 - Google code scanner for QR scanning, so the app needs no camera permission.
@@ -105,7 +105,7 @@ chain/     ENS, RPC, sending, batch, delegation, simulation
 core/      credentials, authentication, walletgate
 dbs/       databases: activity, chains, tokens, wallets
 prices/    CoinGecko price repository
-storage/   icon store, keystore vault, pricekey store, contracts, vault
+storage/   icon store, keystore vault, API key store (CoinGecko, Alchemy), contracts, vault
 ui/        screens, dialogs, theme, icons, view model
 utils/     shared constants, helpers, scanner
 wc/        WalletConnect service and request signing

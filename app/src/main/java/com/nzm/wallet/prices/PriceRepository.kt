@@ -114,6 +114,7 @@ class PriceRepository(context: Context) {
                 null,
                 emptyMap()
             ).also { save(chain.chainId, it) }
+        // old prices stay only for a call that failed: a price CoinGecko no longer gives must not look current
         var native = old.native
         val merged = old.tokens.toMutableMap()
         var failure: Exception? = null
@@ -121,7 +122,7 @@ class PriceRepository(context: Context) {
 
         if (platform.nativeCoinId != null) {
             try {
-                CoinGecko.nativePrice(key, platform.nativeCoinId)?.let { native = it }
+                native = CoinGecko.nativePrice(key, platform.nativeCoinId)
                 succeeded++
             } catch (e: CancellationException) {
                 throw e
@@ -131,7 +132,9 @@ class PriceRepository(context: Context) {
         }
         if (tokens.isNotEmpty()) {
             try {
-                merged.putAll(CoinGecko.tokenPrices(key, platform.id, tokens.map { it.address }))
+                val fresh = CoinGecko.tokenPrices(key, platform.id, tokens.map { it.address })
+                merged.clear()
+                merged.putAll(fresh)
                 succeeded++
             } catch (e: CancellationException) {
                 throw e
