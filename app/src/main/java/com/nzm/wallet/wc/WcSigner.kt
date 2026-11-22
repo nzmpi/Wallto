@@ -33,11 +33,11 @@ class TypedReq(
 
 class WcTx(val to: String, val value: BigInteger, val data: String)
 
-enum class CallKind { TRANSFER, APPROVE, APPROVE_ALL, TRANSFER_FROM }
+enum class CallKind { TRANSFER, APPROVE, APPROVE_ALL, REVOKE_ALL, TRANSFER_FROM }
 
 /**
  * A decoded token call. [party]: recipient, spender or operator. [from]: transferFrom only.
- * [amount]: token amount or NFT id; for APPROVE_ALL the raw approved flag.
+ * [amount]: token amount or NFT id; for APPROVE_ALL / REVOKE_ALL the raw approved flag.
  */
 class KnownCall(
     val kind: CallKind,
@@ -134,7 +134,12 @@ object WcSigner {
             when (d.take(8)) {
                 "a9059cbb" -> KnownCall(CallKind.TRANSFER, addr(0), num(1), token)
                 "095ea7b3" -> KnownCall(CallKind.APPROVE, addr(0), num(1), token)
-                "a22cb465" -> KnownCall(CallKind.APPROVE_ALL, addr(0), num(1), token)
+                "a22cb465" -> KnownCall(
+                    if (num(1).signum() == 0) CallKind.REVOKE_ALL else CallKind.APPROVE_ALL,
+                    addr(0),
+                    num(1),
+                    token
+                )
                 "23b872dd" -> KnownCall(
                     CallKind.TRANSFER_FROM,
                     addr(1),
@@ -170,6 +175,7 @@ object WcSigner {
             return when (c.kind) {
                 CallKind.APPROVE -> "Approve token spending\nSpender: ${c.party}\nAmount: $amount"
                 CallKind.APPROVE_ALL -> "setApprovalForAll: gives ${c.party} control of ALL your tokens in this collection"
+                CallKind.REVOKE_ALL -> "setApprovalForAll: removes ${c.party}'s control of your tokens in this collection"
                 CallKind.TRANSFER -> "Token transfer\nTo: ${c.party}\nAmount: $amount"
                 CallKind.TRANSFER_FROM -> "transferFrom\nFrom: ${c.from}\nTo: ${c.party}\nAmount/ID: $amount"
             } to c.danger

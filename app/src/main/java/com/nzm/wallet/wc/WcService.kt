@@ -180,12 +180,20 @@ object WcService {
     }
 
     fun refreshSessions() {
-        _sessions.value = try {
-            WalletKit.getListOfActiveSessions().filter { it.metaData != null }
+        val all = try {
+            WalletKit.getListOfActiveSessions()
         } catch (_: Exception) {
-            emptyList()
+            _sessions.value = emptyList()
+            return
         }
+        _sessions.value = all.filter { it.metaData != null }
         _sessions.value.forEach { s -> accountOf(s)?.let { cacheAccount(s.topic, it) } }
+        // batch ids of sessions that are gone: nobody can ask for them any more
+        val live = all.map { it.topic }.toSet()
+        accountPrefs?.let { p ->
+            val stale = p.all.keys.filter { it.startsWith("call:") && it.split(':')[1] !in live }
+            if (stale.isNotEmpty()) p.edit { stale.forEach { remove(it) } }
+        }
     }
 
     fun disconnect(topic: String) {
@@ -345,8 +353,13 @@ object WcService {
 
     private val bg = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun saveCall(id: String, chainId: Long, hash: String) {
-        accountPrefs?.edit { putString("call:$id", "$chainId:$hash") }
+    /** Batch ids are per session: one site cannot read or overwrite another site's batch. */
+    private fun callKey(topic: String, id: String) = "call:$topic:$id"
+
+    fun hasCall(topic: String, id: String) = accountPrefs?.contains(callKey(topic, id)) == true
+
+    fun saveCall(topic: String, id: String, chainId: Long, hash: String) {
+        accountPrefs?.edit { putString(callKey(topic, id), "$chainId:$hash") }
     }
 
     private fun result(r: Wallet.Model.SessionRequest, json: String) =
@@ -389,7 +402,7 @@ object WcService {
                 try {
                     val raw = JSONArray(r.request.params).get(0)
                     val id = if (raw is JSONObject) raw.getString("id") else raw.toString()
-                    val saved = accountPrefs?.getString("call:$id", null)
+                    val saved = accountPrefs?.getString(callKey(r.topic, id), null)
                         ?: return@launch errorTo(r.topic, r.request.id, 5730, "Unknown bundle id")
                     val (cid, hash) = saved.split(":", limit = 2)
                     val chain = chains.firstOrNull { it.chainId == cid.toLong() }

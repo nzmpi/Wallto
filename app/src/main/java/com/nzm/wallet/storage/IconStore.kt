@@ -27,12 +27,12 @@ import androidx.compose.ui.unit.sp
 import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.ui.theme.Dim
+import com.nzm.wallet.utils.Helpers.readCapped
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.web3j.crypto.Keys
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -169,20 +169,11 @@ object IconStore {
                             failed.add(key); return@withLock
                         }
                     }
-                    val buf = ByteArrayOutputStream()
-                    c.inputStream.use { ins ->
-                        val chunk = ByteArray(8192)
-                        while (true) {
-                            val n = ins.read(chunk)
-                            if (n < 0) break
-                            buf.write(chunk, 0, n)
-                            if (buf.size() > MAX_BYTES) {
-                                none.createNewFile(); return@withLock
-                            }
-                        }
+                    val bytes = c.inputStream.readCapped(MAX_BYTES) ?: run {
+                        none.createNewFile(); return@withLock
                     }
                     val tmp = File(d, "$key.tmp")
-                    tmp.writeBytes(buf.toByteArray())
+                    tmp.writeBytes(bytes)
                     if (decode(tmp) == null) {
                         tmp.delete(); none.createNewFile()
                     } else tmp.renameTo(png)

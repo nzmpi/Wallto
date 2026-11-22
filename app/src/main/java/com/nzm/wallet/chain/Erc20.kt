@@ -21,6 +21,9 @@ import java.io.IOException
 import java.math.BigInteger
 
 object Erc20 {
+    private val STRING_OUT =
+        Function("", emptyList<Type<*>>(), listOf(object : TypeReference<Utf8String>() {})).outputParameters
+
     private fun decode(fn: Function, raw: ByteArray): List<Type<*>> =
         FunctionReturnDecoder.decode(
             Numeric.toHexString(raw),
@@ -45,15 +48,24 @@ object Erc20 {
     private suspend fun readString(rpcUrl: String, token: String, method: String): String {
         val fn =
             Function(method, emptyList<Type<*>>(), listOf(object : TypeReference<Utf8String>() {}))
-        val raw = ethCall(rpcUrl, to = token, fn = fn)
-        val s = raw.toUtf8StringOrNull()
-        if (!s.isNullOrEmpty()) return s
-        // old tokens (MKR) return bytes32 instead of string
-        if (raw.size == 32) return String(
-            raw.takeWhile { it != 0.toByte() }.toByteArray(),
-            Charsets.UTF_8
-        )
-        throw IOException("Token has no $method()")
+        return decodeString(ethCall(rpcUrl, to = token, fn = fn))
+            ?: throw IOException("Token has no $method()")
+    }
+
+    /** ABI string, or bytes32 for old tokens (MKR). Null if it is neither. */
+    internal fun decodeString(raw: ByteArray): String? {
+        // old tokens return exactly one word: bytes32, not an encoded string
+        if (raw.size == 32) {
+            return raw.takeWhile { it != 0.toByte() }.toByteArray().toUtf8StringOrNull()
+                ?.takeIf { it.isNotEmpty() }
+        }
+        val s = try {
+            FunctionReturnDecoder.decode(Numeric.toHexString(raw), STRING_OUT)
+                .firstOrNull()?.value as? String
+        } catch (_: Exception) {
+            null
+        }
+        return s?.takeIf { it.isNotEmpty() }
     }
 
     private suspend fun readDecimals(rpcUrl: String, token: String): Int {

@@ -14,6 +14,8 @@ import com.nzm.wallet.dbs.Chain
 import com.nzm.wallet.dbs.Token
 import com.nzm.wallet.utils.Constants.PROVIDER
 import org.web3j.crypto.Keys
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.math.MathContext
@@ -33,6 +35,21 @@ object Helpers {
         } catch (_: CharacterCodingException) {
             null
         }
+
+    /** Reads the whole stream and closes it. Null if it holds more than [max] bytes. */
+    fun InputStream.readCapped(max: Int): ByteArray? {
+        val buf = ByteArrayOutputStream()
+        use {
+            val chunk = ByteArray(8192)
+            while (true) {
+                val n = it.read(chunk)
+                if (n < 0) break
+                buf.write(chunk, 0, n)
+                if (buf.size() > max) return null
+            }
+        }
+        return buf.toByteArray()
+    }
 
     fun Context.getPrefs(key: String): SharedPreferences =
         getSharedPreferences(key, Context.MODE_PRIVATE)

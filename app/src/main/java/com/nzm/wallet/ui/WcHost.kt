@@ -15,7 +15,6 @@ import androidx.fragment.app.FragmentActivity
 import com.nzm.wallet.storage.Vault
 import com.nzm.wallet.ui.theme.Dim
 import com.nzm.wallet.wc.WcService
-import com.reown.walletkit.client.Wallet
 
 @Composable
 fun WcHost(activity: FragmentActivity, vault: Vault, vm: WalletViewModel, address: String) {
@@ -40,7 +39,7 @@ fun WcHost(activity: FragmentActivity, vault: Vault, vm: WalletViewModel, addres
 private fun ProposalDialog(vm: WalletViewModel, address: String, item: WcService.Proposal) {
     val p = item.proposal
     val (warn, blocked) = verdict(item.verify)
-    val verified = item.verify.validation == Wallet.Model.Validation.VALID && !blocked
+    val verified = isVerified(item.verify)
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var siteInfo by remember { mutableStateOf(false) }

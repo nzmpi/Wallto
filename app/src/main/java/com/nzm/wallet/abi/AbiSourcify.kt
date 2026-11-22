@@ -1,5 +1,6 @@
 package com.nzm.wallet.abi
 
+import com.nzm.wallet.utils.Helpers.readCapped
 import com.nzm.wallet.utils.Helpers.sanitize
 import com.nzm.wallet.utils.Helpers.shortAddress
 import kotlinx.coroutines.Dispatchers
@@ -7,7 +8,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.web3j.crypto.Hash
 import org.web3j.utils.Numeric
-import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
@@ -32,17 +32,7 @@ object Sourcify {
                 200 -> {}
                 else -> throw IllegalStateException("Sourcify error $code")
             }
-            val buf = ByteArrayOutputStream()
-            c.inputStream.use { ins ->
-                val chunk = ByteArray(8192)
-                while (true) {
-                    val n = ins.read(chunk)
-                    if (n < 0) break
-                    buf.write(chunk, 0, n)
-                    check(buf.size() <= MAX_BYTES) { "ABI is too large" }
-                }
-            }
-            val bytes = buf.toByteArray()
+            val bytes = c.inputStream.readCapped(MAX_BYTES) ?: error("ABI is too large")
             val j = JSONObject(String(bytes, Charsets.UTF_8))
             val abi = j.optJSONArray("abi")?.toString()
             val pr = j.optJSONObject("proxyResolution")
@@ -115,17 +105,8 @@ object SelectorLookup {
             c.setRequestProperty("Accept", "application/json")
             val code = c.responseCode
             check(code == 200) { "Signature lookup error $code" }
-            val buf = ByteArrayOutputStream()
-            c.inputStream.use { ins ->
-                val chunk = ByteArray(8192)
-                while (true) {
-                    val n = ins.read(chunk)
-                    if (n < 0) break
-                    buf.write(chunk, 0, n)
-                    check(buf.size() <= MAX_BYTES) { "Signature response too large" }
-                }
-            }
-            val arr = JSONObject(String(buf.toByteArray(), Charsets.UTF_8))
+            val bytes = c.inputStream.readCapped(MAX_BYTES) ?: error("Signature response too large")
+            val arr = JSONObject(String(bytes, Charsets.UTF_8))
                 .optJSONObject("result")?.optJSONObject("function")?.optJSONArray("0x$selector")
                 ?: return Entry(null)
             val good = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
