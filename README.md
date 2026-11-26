@@ -4,6 +4,14 @@ A personal, non-custodial Android wallet for EVM chains. Keys are created and ke
 
 > **Warning.** This is a personal project. It has not been audited. Use it at your own risk, start with testnets, and never keep more in it than you can afford to lose. Always keep a written backup of every recovery phrase or private key.
 
+<p>
+  <img src="docs/screenshots/welcome.png" width="160" alt="Welcome screen: create or import a wallet">
+  <img src="docs/screenshots/assets.png" width="160" alt="Assets on Ethereum">
+  <img src="docs/screenshots/send.png" width="160" alt="Send screen resolving an ENS name, with a first-time-recipient warning">
+  <img src="docs/screenshots/contracts.png" width="160" alt="Contract call with the ABI loaded from Sourcify through a proxy">
+  <img src="docs/screenshots/settings.png" width="160" alt="Settings">
+</p>
+
 ## Features
 
 **Wallets**
